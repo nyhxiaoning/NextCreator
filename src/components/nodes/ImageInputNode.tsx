@@ -17,6 +17,7 @@ export const ImageInputNode = memo(({ id, data, selected }: NodeProps<ImageInput
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showPreview, setShowPreview] = useState(false);
   const [showMaskEditor, setShowMaskEditor] = useState(false);
+  const isOverlay = data.__renderOverlay === true;
 
   const handleFileSelect = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -217,13 +218,14 @@ export const ImageInputNode = memo(({ id, data, selected }: NodeProps<ImageInput
         )}
       </div>
 
-      {/* 输出端口 - image 类型 */}
-      <Handle
-        type="source"
-        position={Position.Right}
-        id="output-image"
-        className="!w-3 !h-3 !bg-green-500 !border-2 !border-white"
-      />
+      {!isOverlay && (
+        <Handle
+          type="source"
+          position={Position.Right}
+          id="output-image"
+          className="!w-3 !h-3 !bg-green-500 !border-2 !border-white"
+        />
+      )}
     </div>
 
     {/* 预览弹窗 */}

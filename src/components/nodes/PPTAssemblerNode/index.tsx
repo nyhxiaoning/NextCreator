@@ -89,6 +89,7 @@ export const PPTAssemblerNode = memo(({ id, data, selected }: NodeProps<PPTAssem
 
   // 错误详情弹窗
   const [showErrorDetail, setShowErrorDetail] = useState(false);
+  const isOverlay = data.__renderOverlay === true;
 
   // 处理控制
   const activeBatchCountRef = useRef(0);
@@ -614,14 +615,15 @@ export const PPTAssemblerNode = memo(({ id, data, selected }: NodeProps<PPTAssem
           ${selected ? "border-primary shadow-primary/20" : "border-base-300"}
         `}
       >
-        {/* 输入端口 */}
-        <Handle
-          type="target"
-          position={Position.Left}
-          id="input-results"
-          className="!w-3 !h-3 !bg-purple-500 !border-2 !border-white"
-          title="PPT 页面数据"
-        />
+        {!isOverlay && (
+          <Handle
+            type="target"
+            position={Position.Left}
+            id="input-results"
+            className="!w-3 !h-3 !bg-purple-500 !border-2 !border-white"
+            title="PPT 页面数据"
+          />
+        )}
 
         {/* 节点头部 */}
         <div className="flex items-center justify-between px-3 py-2 bg-gradient-to-r from-emerald-500 to-teal-500 rounded-t-lg">

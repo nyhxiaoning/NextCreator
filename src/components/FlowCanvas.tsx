@@ -31,6 +31,7 @@ import {
 
 import { useFlowStore } from "@/stores/flowStore";
 import { nodeTypes } from "@/components/nodes";
+import { OverlayNodeLayer } from "@/components/canvas/OverlayNodeLayer";
 import { ContextMenu, type ContextMenuItem } from "@/components/ui/ContextMenu";
 import type { CustomNodeData } from "@/types";
 
@@ -45,9 +46,10 @@ interface ContextMenuState {
   targetId?: string;
 }
 
-// WKWebView 模糊修复：将 zoom 吸附到 0.25 步长（0.25/0.50/0.75/1.00/1.25...）
+// WKWebView 模糊修复：将 zoom 吸附到固定步长，减少非整数 scale 的采样偏差。
 // 非整数 scale 会导致节点内 overflow:scroll 等 CA 子层采样偏差，引发整节点模糊
 const ZOOM_STEP = 0.1;
+
 function snapViewport(x: number, y: number, zoom: number) {
   return {
     x: Math.round(x),
@@ -59,6 +61,7 @@ function snapViewport(x: number, y: number, zoom: number) {
 export function FlowCanvas() {
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const reactFlowInstance = useRef<ReactFlowInstance<CustomNode> | null>(null);
+  const [viewport, setViewport] = useState<Viewport>({ x: 100, y: 100, zoom: 1 });
 
   // 数据字段：用 selector 单独订阅，避免不相关状态变化触发重渲染
   const nodes = useFlowStore((s) => s.nodes);
@@ -98,6 +101,7 @@ export function FlowCanvas() {
   const updateNodeData = useFlowStore((s) => s.updateNodeData);
 
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   // 裁剪模式状态
   const [trimMode, setTrimMode] = useState(false);
 
@@ -287,9 +291,10 @@ export function FlowCanvas() {
 
   const onInit = useCallback((instance: ReactFlowInstance<CustomNode>) => {
     reactFlowInstance.current = instance;
-    // 启动时立即吸附 zoom 到 0.25 步长，防止上次保存的非整数 zoom 导致模糊
+    // 启动时立即吸附 zoom，防止上次保存的非整数 zoom 导致模糊
     const vp = instance.getViewport();
     const snapped = snapViewport(vp.x, vp.y, vp.zoom);
+    setViewport(snapped);
     if (snapped.x !== vp.x || snapped.y !== vp.y || snapped.zoom !== vp.zoom) {
       instance.setViewport(snapped, { duration: 0 });
     }
@@ -319,6 +324,14 @@ export function FlowCanvas() {
     },
     [setSelectedNode, setSelectedNodes, selectedNodeIds, trimMode, removeNode]
   );
+
+  const onNodeMouseEnter = useCallback((_event: React.MouseEvent, node: { id: string }) => {
+    setHoveredNodeId(node.id);
+  }, []);
+
+  const onNodeMouseLeave = useCallback((_event: React.MouseEvent, node: { id: string }) => {
+    setHoveredNodeId((current) => (current === node.id ? null : current));
+  }, []);
 
   const onPaneClick = useCallback(() => {
     clearSelection();
@@ -404,8 +417,13 @@ export function FlowCanvas() {
   );
 
   // 平移/缩放结束后吸附到干净坐标，防止非整数 scale/translate 导致 WKWebView 模糊
+  const onMove = useCallback((_event: MouseEvent | TouchEvent | null, viewport: Viewport) => {
+    setViewport(viewport);
+  }, []);
+
   const onMoveEnd = useCallback((_event: MouseEvent | TouchEvent | null, viewport: Viewport) => {
     const snapped = snapViewport(viewport.x, viewport.y, viewport.zoom);
+    setViewport(snapped);
     if (snapped.x !== viewport.x || snapped.y !== viewport.y || snapped.zoom !== viewport.zoom) {
       reactFlowInstance.current?.setViewport(snapped, { duration: 0 });
     }
@@ -606,9 +624,9 @@ export function FlowCanvas() {
   const cmdKey = isMac ? "⌘" : "Ctrl";
 
   return (
-    <div ref={reactFlowWrapper} className={`flex-1 h-full ${trimMode ? "cursor-crosshair" : ""}`}>
+    <div ref={reactFlowWrapper} className={`relative flex-1 h-full ${trimMode ? "cursor-crosshair" : ""}`}>
       <ReactFlow<CustomNode>
-        nodes={nodes as CustomNode[]}
+        nodes={nodes}
         edges={edges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
@@ -618,18 +636,25 @@ export function FlowCanvas() {
         onDrop={onDrop}
         onDragOver={onDragOver}
         onNodeClick={onNodeClick}
+        onNodeMouseEnter={onNodeMouseEnter}
+        onNodeMouseLeave={onNodeMouseLeave}
         onPaneClick={onPaneClick}
         onNodeContextMenu={onNodeContextMenu}
         onEdgeContextMenu={onEdgeContextMenu}
         onPaneContextMenu={onPaneContextMenu}
         onEdgeClick={onEdgeClick}
         onSelectionChange={onSelectionChange}
+        onMove={onMove}
         onMoveEnd={onMoveEnd}
         nodeTypes={nodeTypes as NodeTypes}
         selectionMode={SelectionMode.Partial}
         selectionOnDrag={!trimMode}
         panOnDrag={trimMode ? false : [1, 2]}
         selectNodesOnDrag={false}
+        elevateNodesOnSelect={false}
+        elevateEdgesOnSelect={false}
+        nodeDragThreshold={10}
+        nodeClickDistance={5}
         snapToGrid
         snapGrid={[15, 15]}
         minZoom={0.2}
@@ -677,6 +702,13 @@ export function FlowCanvas() {
           color="#d1d5db"
         />
       </ReactFlow>
+
+      <OverlayNodeLayer
+        nodes={nodes}
+        selectedNodeIds={selectedNodeIds}
+        hoveredNodeId={hoveredNodeId}
+        viewport={viewport}
+      />
 
       {/* 裁剪模式提示 */}
       {trimMode && (

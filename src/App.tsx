@@ -4,6 +4,7 @@ import { ReactFlowProvider } from "@xyflow/react";
 import { Toolbar } from "@/components/Toolbar";
 import { FlowCanvas } from "@/components/FlowCanvas";
 import { Sidebar } from "@/components/Sidebar";
+import { NodeInspector } from "@/components/inspectors/NodeInspector";
 import { SettingsPanel, KeyboardShortcutsPanel } from "@/components/panels";
 import { ProviderPanel } from "@/components/panels/ProviderPanel";
 import { StorageManagementModal } from "@/components/ui/StorageManagementModal";
@@ -182,6 +183,9 @@ function App() {
 
           {/* 右侧画布区域 */}
           <FlowCanvas />
+
+          {/* 选中节点检查器 */}
+          <NodeInspector />
         </div>
 
         {/* 设置面板 */}

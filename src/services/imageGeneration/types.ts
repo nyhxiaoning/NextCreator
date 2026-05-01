@@ -36,6 +36,7 @@ export interface ImageGenerationRequest {
   seed?: number; // 随机种子
   steps?: number; // 生成步数
   guidanceScale?: number; // 引导强度
+  watermark?: boolean; // 是否添加水印
   style?: string; // 风格预设
 }
 

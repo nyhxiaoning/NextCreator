@@ -354,7 +354,7 @@ export class WorkflowEngine {
       }
     } else {
       // 需要 prompt 输入的节点类型
-      const needsPrompt = ["imageGeneratorProNode", "imageGeneratorFastNode", "videoGeneratorNode", "llmContentNode"];
+      const needsPrompt = ["imageGeneratorNode", "videoGeneratorNode", "llmContentNode"];
       if (needsPrompt.includes(nodeType)) {
         missingInputs.push("缺少提示词连接");
       }

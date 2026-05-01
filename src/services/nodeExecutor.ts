@@ -15,13 +15,34 @@ import type { NodeExecutionResult } from "@/types/workflow";
 import { shouldSkipNode } from "@/types/workflow";
 import { useFlowStore } from "@/stores/flowStore";
 import { useCanvasStore } from "@/stores/canvasStore";
-import { generateImage, editImage } from "@/services/imageService";
+import { generateImage, editImage } from "@/services/imageGeneration";
 import { generateLLMContent } from "@/services/llmService";
 import { createVideoTask, pollVideoTask } from "@/services/videoGeneration";
 import { saveImage, readImage } from "@/services/fileStorageService";
+import {
+  buildImageGenerationRequest,
+  getImageEngineConfig,
+  getResolvedGptImageSize,
+  validateGptImage2Size,
+} from "@/components/nodes/imageGeneratorConfig";
+import { compositeWithMask } from "@/utils/imageMask";
 
 // 自定义节点类型
 type CustomNode = Node<CustomNodeData>;
+
+interface ConnectedImageInfo {
+  id: string;
+  fileName?: string;
+  imageData: string;
+  imagePath?: string;
+  hasMask?: boolean;
+  maskImageData?: string;
+  maskImagePath?: string;
+}
+
+function isImageOutputNodeType(type?: string): boolean {
+  return type === "imageGeneratorNode";
+}
 
 /**
  * 从指定画布获取连接的输入数据（异步版本，支持从文件加载图片）
@@ -87,7 +108,7 @@ async function getConnectedInputDataFromCanvas(
         } else {
           imageData = data.imageData;
         }
-      } else if (sourceNode.type === "imageGeneratorProNode" || sourceNode.type === "imageGeneratorFastNode") {
+      } else if (isImageOutputNodeType(sourceNode.type)) {
         const data = sourceNode.data as { outputImage?: string; outputImagePath?: string };
         // 优先从文件加载
         if (data.outputImagePath) {
@@ -137,7 +158,7 @@ async function getConnectedInputDataFromCanvas(
           imageData = data.imageData;
         }
         if (imageData) images.push(imageData);
-      } else if (sourceNode.type === "imageGeneratorProNode" || sourceNode.type === "imageGeneratorFastNode") {
+      } else if (isImageOutputNodeType(sourceNode.type)) {
         const data = sourceNode.data as { outputImage?: string; outputImagePath?: string };
         let imageData: string | undefined;
         if (data.outputImagePath) {
@@ -163,6 +184,107 @@ async function getConnectedInputDataFromCanvas(
   // 将多个 prompt 拼接成一个字符串，用换行符分隔
   const prompt = prompts.length > 0 ? prompts.join("\n\n") : undefined;
   return { prompt, images, files };
+}
+
+async function getConnectedImageDetailsFromCanvas(
+  nodeId: string,
+  canvasId: string
+): Promise<ConnectedImageInfo[]> {
+  const { activeCanvasId } = useCanvasStore.getState();
+
+  if (canvasId === activeCanvasId) {
+    return useFlowStore.getState().getConnectedImagesWithInfoAsync(nodeId);
+  }
+
+  const canvas = useCanvasStore.getState().canvases.find((c) => c.id === canvasId);
+  if (!canvas) {
+    return [];
+  }
+
+  const nodes = canvas.nodes as CustomNode[];
+  const edges = canvas.edges as Edge[];
+  const incomingEdges = edges.filter((edge) => edge.target === nodeId);
+  const images: ConnectedImageInfo[] = [];
+
+  for (const edge of incomingEdges) {
+    const sourceNode = nodes.find((n) => n.id === edge.source);
+    if (!sourceNode) continue;
+
+    const targetHandle = edge.targetHandle;
+    if (targetHandle !== "input-image" && targetHandle) continue;
+
+    if (sourceNode.type === "imageInputNode") {
+      const data = sourceNode.data as {
+        imageData?: string;
+        fileName?: string;
+        imagePath?: string;
+        hasMask?: boolean;
+        maskImageData?: string;
+        maskImagePath?: string;
+      };
+      let imageData: string | undefined;
+      if (data.imagePath) {
+        try {
+          imageData = await readImage(data.imagePath);
+        } catch (err) {
+          console.warn("从文件加载图片失败:", err);
+          imageData = data.imageData;
+        }
+      } else {
+        imageData = data.imageData;
+      }
+
+      if (imageData) {
+        let maskImageData: string | undefined;
+        if (data.hasMask) {
+          if (data.maskImagePath) {
+            try {
+              maskImageData = await readImage(data.maskImagePath);
+            } catch (err) {
+              console.warn("从文件加载蒙版失败:", err);
+              maskImageData = data.maskImageData;
+            }
+          } else {
+            maskImageData = data.maskImageData;
+          }
+        }
+
+        images.push({
+          id: sourceNode.id,
+          fileName: data.fileName || `图片-${sourceNode.id.slice(0, 4)}`,
+          imageData,
+          imagePath: data.imagePath,
+          hasMask: data.hasMask,
+          maskImageData,
+          maskImagePath: data.maskImagePath,
+        });
+      }
+    } else if (isImageOutputNodeType(sourceNode.type)) {
+      const data = sourceNode.data as { outputImage?: string; label?: string; outputImagePath?: string };
+      let imageData: string | undefined;
+      if (data.outputImagePath) {
+        try {
+          imageData = await readImage(data.outputImagePath);
+        } catch (err) {
+          console.warn("从文件加载图片失败:", err);
+          imageData = data.outputImage;
+        }
+      } else {
+        imageData = data.outputImage;
+      }
+
+      if (imageData) {
+        images.push({
+          id: sourceNode.id,
+          fileName: data.label || `生成-${sourceNode.id.slice(0, 4)}`,
+          imageData,
+          imagePath: data.outputImagePath,
+        });
+      }
+    }
+  }
+
+  return images;
 }
 
 /**
@@ -212,10 +334,19 @@ async function executeImageGeneratorNode(
   signal?: AbortSignal
 ): Promise<NodeExecutionResult> {
   const data = node.data as ImageGeneratorNodeData;
-  const isPro = node.type === "imageGeneratorProNode";
-  const nodeType = isPro ? "imageGeneratorPro" : "imageGeneratorFast";
+  const config = getImageEngineConfig(data.engine);
   // 使用画布感知的数据读取，解决画布切换问题（异步从文件加载图片）
-  const { prompt, images } = await getConnectedInputDataFromCanvas(node.id, canvasId);
+  const { prompt } = await getConnectedInputDataFromCanvas(node.id, canvasId);
+  const connectedImageDetails = await getConnectedImageDetailsFromCanvas(node.id, canvasId);
+  const orderedImageDetails = [...connectedImageDetails].sort((a, b) => {
+    return Number(!!b.hasMask && !!b.maskImageData) - Number(!!a.hasMask && !!a.maskImageData);
+  });
+  const inputImages = config.supportsImageInput
+    ? orderedImageDetails.map((img) => img.imageData).filter(Boolean)
+    : [];
+  const maskImage = config.hasGptImageControls
+    ? orderedImageDetails.find((img) => img.hasMask && img.maskImageData)?.maskImageData
+    : undefined;
 
   // 验证输入
   if (!prompt) {
@@ -226,6 +357,18 @@ async function executeImageGeneratorNode(
     return { success: false, error: "缺少必需的提示词输入" };
   }
 
+  const model = data.model || config.defaultModel;
+  const sizeValidationError = config.hasGptImageControls && model === "gpt-image-2"
+    ? validateGptImage2Size(getResolvedGptImageSize(data))
+    : undefined;
+  if (sizeValidationError) {
+    updateNodeDataWithCanvas<ImageGeneratorNodeData>(node.id, canvasId, {
+      status: "error",
+      error: sizeValidationError,
+    });
+    return { success: false, error: sizeValidationError };
+  }
+
   // 更新状态为加载中
   updateNodeDataWithCanvas<ImageGeneratorNodeData>(node.id, canvasId, {
     status: "loading",
@@ -233,30 +376,37 @@ async function executeImageGeneratorNode(
   });
 
   try {
+    let finalPrompt = prompt;
+    if (!config.hasGptImageControls && inputImages.length > 0) {
+      const hasMaskInput = connectedImageDetails.some((img) => img.hasMask);
+      if (hasMaskInput) {
+        finalPrompt = `I'm providing two images: the original image and the same image with red highlighted areas marking the regions I want you to edit. Please edit ONLY the red-marked areas according to this instruction: ${prompt}`;
+      }
+    }
+
+    if (!config.hasGptImageControls) {
+      for (const img of orderedImageDetails) {
+        if (!img.hasMask || !img.maskImageData || !img.imageData) continue;
+        try {
+          inputImages.push(await compositeWithMask(img.imageData, img.maskImageData));
+        } catch {
+          inputImages.push(img.maskImageData);
+        }
+      }
+    }
+
+    const request = buildImageGenerationRequest(
+      { ...data, model },
+      finalPrompt,
+      inputImages.length > 0 ? inputImages : undefined,
+      maskImage
+    );
+
     // 调用服务
     const response =
-      images.length > 0
-        ? await editImage(
-            {
-              prompt,
-              model: data.model,
-              inputImages: images,
-              aspectRatio: data.aspectRatio,
-              imageSize: isPro ? data.imageSize : undefined,
-            },
-            nodeType,
-            signal
-          )
-        : await generateImage(
-            {
-              prompt,
-              model: data.model,
-              aspectRatio: data.aspectRatio,
-              imageSize: isPro ? data.imageSize : undefined,
-            },
-            nodeType,
-            signal
-          );
+      inputImages.length > 0 || maskImage
+        ? await editImage(request, config.providerKey, signal)
+        : await generateImage(request, config.providerKey, signal);
 
     // 检查是否被取消
     if (signal?.aborted) {
@@ -608,8 +758,7 @@ export class NodeExecutor {
 
     // 根据节点类型分发执行
     switch (nodeType) {
-      case "imageGeneratorProNode":
-      case "imageGeneratorFastNode":
+      case "imageGeneratorNode":
         return executeImageGeneratorNode(node, canvasId, signal);
 
       case "llmContentNode":

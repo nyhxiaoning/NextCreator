@@ -33,6 +33,78 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+.canvas-node-shell {
+  position: relative;
+  box-sizing: border-box;
+  transition: none;
+}
+
+.canvas-node-interaction-shell {
+  pointer-events: all;
+  background: transparent;
+}
+
+.canvas-node-interaction-shell .react-flow__handle {
+  opacity: 0;
+}
+
+.canvas-node-hidden-content {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.canvas-node-overlay-scale {
+  width: var(--canvas-node-width);
+  height: var(--canvas-node-height);
+  transform: scale(var(--canvas-node-zoom));
+  transform-origin: top left;
+  pointer-events: none;
+}
+
+.canvas-node-overlay-scale > .relative,
+.canvas-node-overlay-content {
+  width: var(--canvas-node-width);
+  height: var(--canvas-node-height);
+}
+
+.canvas-node-overlay-item {
+  pointer-events: none;
+}
+
+/* Overlay nodes pass blank-card pointer events through to React Flow's hidden shell.
+   Mark real controls explicitly so buttons, previews, and dropdowns stay interactive. */
+.canvas-node-overlay-scale button,
+.canvas-node-overlay-scale input,
+.canvas-node-overlay-scale textarea,
+.canvas-node-overlay-scale select,
+.canvas-node-overlay-scale a,
+.canvas-node-overlay-scale [role="button"],
+.canvas-node-overlay-scale [data-canvas-interactive="true"],
+.canvas-node-overlay-scale .btn,
+.canvas-node-overlay-scale .canvas-node-interactive,
+.canvas-node-overlay-scale .cursor-pointer,
+.canvas-node-overlay-scale .pointer-events-auto {
+  pointer-events: auto;
+}
+
+.canvas-node-overlay-content {
+  pointer-events: none;
+}
+
+.canvas-node-overlay-handle {
+  opacity: 0.72;
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
+.canvas-node-overlay-handle-left {
+  transform: translate(-50%, -50%);
+}
+
+.canvas-node-overlay-handle-right {
+  transform: translate(50%, -50%);
+}
+
 .react-flow__edge-path {
   @apply stroke-2;
 }

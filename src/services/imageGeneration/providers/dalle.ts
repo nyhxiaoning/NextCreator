@@ -102,9 +102,11 @@ export class DalleImageProvider implements ImageGenerationProvider {
       prompt: request.prompt,
       inputImages: request.inputImages,
       size: this.aspectRatioToSize(request.aspectRatio),
-      quality: request.imageSize === "4K" ? "hd" : "standard",
+      quality: request.quality || (request.imageSize === "4K" ? "hd" : "standard"),
       style: request.style,
       negativePrompt: request.negativePrompt,
+      guidanceScale: request.guidanceScale,
+      watermark: request.watermark,
     };
   }
 

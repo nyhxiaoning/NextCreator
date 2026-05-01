@@ -1,4 +1,5 @@
 import type { Node, Edge } from "@xyflow/react";
+import type { ImageGeneratorNodeData } from "@/components/nodes/imageGeneratorConfig";
 
 // 详细错误信息结构
 export interface ErrorDetails {
@@ -97,18 +98,7 @@ export interface PromptNodeData {
   prompt: string;
 }
 
-export interface ImageGeneratorNodeData {
-  [key: string]: unknown;
-  label: string;
-  model: ModelType;
-  aspectRatio: ImageGenerationParams["aspectRatio"];
-  imageSize: ImageGenerationParams["imageSize"];
-  status: "idle" | "loading" | "success" | "error";
-  outputImage?: string;     // 仍保留 base64 用于向后兼容
-  outputImagePath?: string; // 新增：文件系统路径
-  error?: string;
-  errorDetails?: ErrorDetails;  // 详细错误信息
-}
+export type { ImageGeneratorNodeData } from "@/components/nodes/imageGeneratorConfig";
 
 export interface ImageInputNodeData {
   [key: string]: unknown;

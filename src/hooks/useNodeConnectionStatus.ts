@@ -60,11 +60,7 @@ export function useNodeConnectionStatus(nodeId: string) {
           } else {
             imageCount++;
           }
-        } else if (
-          sourceNode.type === "imageGeneratorProNode" ||
-          sourceNode.type === "imageGeneratorFastNode" ||
-          sourceNode.type === "imageGeneratorNB2Node"
-        ) {
+        } else if (sourceNode.type === "imageGeneratorNode") {
           const data = sourceNode.data as { outputImage?: string; outputImagePath?: string; label?: string };
           if (!data.outputImage && !data.outputImagePath) {
             emptyImages.push({

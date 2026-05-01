@@ -15,48 +15,19 @@ import { v4 as uuidv4 } from "uuid";
 import type { CustomNode, CustomEdge, CustomNodeData } from "@/types";
 import type { WorkflowExecutionContext } from "@/types/workflow";
 import type { PromptNodeTemplate } from "@/config/promptConfig";
+import type { ImageGeneratorEngine } from "@/components/nodes/imageGeneratorConfig";
 import { validateConnection } from "@/utils/connectionValidator";
 import { WorkflowEngine } from "@/services/workflowEngine";
 import { useCanvasStore } from "@/stores/canvasStore";
 import { toast } from "@/stores/toastStore";
 import { readImage } from "@/services/fileStorageService";
+import { getDefaultImageGeneratorData } from "@/components/nodes/imageGeneratorConfig";
+import { compositeWithMask } from "@/utils/imageMask";
 
-const IMAGE_OUTPUT_NODE_TYPES = new Set([
-  "imageGeneratorProNode",
-  "imageGeneratorFastNode",
-  "imageGeneratorNB2Node",
-  "dalleGeneratorNode",
-  "gptImageGeneratorNode",
-  "fluxGeneratorNode",
-  "doubaoGeneratorNode",
-  "zImageGeneratorNode",
-]);
+const IMAGE_OUTPUT_NODE_TYPES = new Set(["imageGeneratorNode"]);
 
 function isImageOutputNodeType(type: string | undefined): boolean {
   return !!type && IMAGE_OUTPUT_NODE_TYPES.has(type);
-}
-
-// 辅助函数：将原图和蒙版绘制层合成为一张带红色标记的图片
-function compositeWithMask(originalBase64: string, maskBase64: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const origImg = new Image();
-    origImg.onload = () => {
-      const maskImg = new Image();
-      maskImg.onload = () => {
-        const canvas = document.createElement("canvas");
-        canvas.width = origImg.naturalWidth;
-        canvas.height = origImg.naturalHeight;
-        const ctx = canvas.getContext("2d")!;
-        ctx.drawImage(origImg, 0, 0);
-        ctx.drawImage(maskImg, 0, 0, canvas.width, canvas.height);
-        resolve(canvas.toDataURL("image/png").split(",")[1]);
-      };
-      maskImg.onerror = reject;
-      maskImg.src = `data:image/png;base64,${maskBase64}`;
-    };
-    origImg.onerror = reject;
-    origImg.src = `data:image/png;base64,${originalBase64}`;
-  });
 }
 
 // 历史记录状态（用于撤销/重做）
@@ -348,32 +319,21 @@ export const useFlowStore = create<FlowStore>((set, get) => ({
     // 3. 创建图片生成节点
     const generatorNodeId = uuidv4();
     nodeIds.push(generatorNodeId);
-    const generatorType = template.generatorType === "pro"
-      ? "imageGeneratorProNode"
+    const generatorEngine: ImageGeneratorEngine = template.generatorType === "pro"
+      ? "nanobanana-pro"
       : template.generatorType === "nb2"
-        ? "imageGeneratorNB2Node"
-        : "imageGeneratorFastNode";
-    const generatorLabel = template.generatorType === "pro"
-      ? "NanoBanana Pro"
-      : template.generatorType === "nb2"
-        ? "NanoBanana2"
-        : "NanoBanana";
-    const generatorModel = template.generatorType === "pro"
-      ? "gemini-3-pro-image-preview"
-      : template.generatorType === "nb2"
-        ? "gemini-3.1-flash-image-preview"
-        : "gemini-2.5-flash-image";
+        ? "nanobanana2"
+        : "nanobanana";
+    const generatorData = getDefaultImageGeneratorData(generatorEngine);
 
     newNodes.push({
       id: generatorNodeId,
-      type: generatorType,
+      type: "imageGeneratorNode",
       position: { x: currentX, y: position.y + 50 },
       data: {
-        label: generatorLabel,
-        model: generatorModel,
+        ...generatorData,
         aspectRatio: template.aspectRatio,
         imageSize: template.generatorType === "pro" ? "2K" : "1K", // NB2 和 Fast 默认 1K
-        status: "idle",
       } as CustomNodeData,
     });
 

@@ -104,6 +104,10 @@ pub struct DalleRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub negative_prompt: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub guidance_scale: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub watermark: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub background: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub output_format: Option<String>,
@@ -158,6 +162,8 @@ pub struct DalleRequestParams {
     pub moderation: Option<String>,
     pub input_fidelity: Option<String>,
     pub negative_prompt: Option<String>,
+    pub guidance_scale: Option<f32>,
+    pub watermark: Option<bool>,
 }
 
 // 前端返回的结果
@@ -318,6 +324,8 @@ pub async fn dalle_generate_image(params: DalleRequestParams) -> DalleResult {
             style: params.style.clone(),
             image: None,
             negative_prompt: params.negative_prompt.clone(),
+            guidance_scale: params.guidance_scale,
+            watermark: params.watermark,
             background: params.background.clone(),
             output_format: params.output_format.clone(),
             output_compression: params.output_compression,

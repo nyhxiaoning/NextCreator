@@ -43,9 +43,7 @@ export type WorkflowStatusCallback = (context: WorkflowExecutionContext) => void
 
 // 可执行的节点类型（输入节点不需要执行）
 export const EXECUTABLE_NODE_TYPES = [
-  "imageGeneratorProNode",
-  "imageGeneratorFastNode",
-  "imageGeneratorNB2Node",
+  "imageGeneratorNode",
   "llmContentNode",
   "videoGeneratorNode",
   "pptContentNode",

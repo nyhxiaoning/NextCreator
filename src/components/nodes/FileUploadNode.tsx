@@ -75,6 +75,7 @@ const getFileTypeName = (mimeType?: string) => {
 export const FileUploadNode = memo(({ id, data, selected }: NodeProps<FileUploadNode>) => {
   const updateNodeData = useFlowStore((state) => state.updateNodeData);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const isOverlay = data.__renderOverlay === true;
 
   const handleFileSelect = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -183,13 +184,14 @@ export const FileUploadNode = memo(({ id, data, selected }: NodeProps<FileUpload
         )}
       </div>
 
-      {/* 输出端口 - file 类型 */}
-      <Handle
-        type="source"
-        position={Position.Right}
-        id="output-file"
-        className="!w-3 !h-3 !bg-orange-500 !border-2 !border-white"
-      />
+      {!isOverlay && (
+        <Handle
+          type="source"
+          position={Position.Right}
+          id="output-file"
+          className="!w-3 !h-3 !bg-orange-500 !border-2 !border-white"
+        />
+      )}
     </div>
   );
 });

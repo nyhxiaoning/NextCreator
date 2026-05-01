@@ -165,8 +165,7 @@ export const useCanvasStore = create<CanvasStore>()(
           // 快速检查是否有需要清理的节点
           const hasNodesToClean = canvas.nodes.some((node) => {
             if (
-              (node.type === "imageGeneratorProNode" ||
-                node.type === "imageGeneratorFastNode") &&
+              node.type === "imageGeneratorNode" &&
               (node.data as ImageGeneratorNodeData).outputImagePath &&
               (node.data as ImageGeneratorNodeData).outputImage
             ) {
@@ -189,8 +188,7 @@ export const useCanvasStore = create<CanvasStore>()(
             ...canvas,
             nodes: canvas.nodes.map((node) => {
               if (
-                (node.type === "imageGeneratorProNode" ||
-                  node.type === "imageGeneratorFastNode") &&
+                node.type === "imageGeneratorNode" &&
                 (node.data as ImageGeneratorNodeData).outputImagePath &&
                 (node.data as ImageGeneratorNodeData).outputImage
               ) {

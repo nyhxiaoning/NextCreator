@@ -1,475 +1,194 @@
-import { memo, useCallback, useState, useRef } from "react";
-import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
-import { Sparkles, Zap, Play, AlertCircle, Maximize2, AlertTriangle, CircleAlert } from "lucide-react";
-import { useFlowStore } from "@/stores/flowStore";
-import { useCanvasStore } from "@/stores/canvasStore";
-import { generateImage, editImage } from "@/services/imageGeneration";
-import { saveImage, getImageUrl, type InputImageInfo } from "@/services/fileStorageService";
-import { ImagePreviewModal } from "@/components/ui/ImagePreviewModal";
+import { memo, useState } from "react";
+import { Handle, Position, type NodeProps } from "@xyflow/react";
+import {
+  AlertCircle,
+  AlertTriangle,
+  CircleAlert,
+  ImageIcon,
+  Maximize2,
+  Play,
+} from "lucide-react";
+import { getImageUrl } from "@/services/fileStorageService";
 import { ErrorDetailModal } from "@/components/ui/ErrorDetailModal";
+import { ImagePreviewModal } from "@/components/ui/ImagePreviewModal";
 import { ModelSelector } from "@/components/ui/ModelSelector";
 import { useLoadingDots } from "@/hooks/useLoadingDots";
+import { useImageGeneratorExecution } from "@/hooks/useImageGeneratorExecution";
 import { useNodeConnectionStatus } from "@/hooks/useNodeConnectionStatus";
-import type { ImageGeneratorNodeData, ImageInputNodeData, ModelType } from "@/types";
+import { useFlowStore } from "@/stores/flowStore";
+import type {
+  ImageGeneratorNodeData,
+  ImageGeneratorEngine,
+  ImageGeneratorNode as ImageGeneratorNodeType,
+} from "./imageGeneratorConfig";
+import {
+  defaultImageEngine,
+  getDefaultImageGeneratorData,
+  getImageEngineConfig,
+  getImageModelDisplayName,
+  getResolvedGptImageSize,
+  imageEngineOptions,
+} from "./imageGeneratorConfig";
 
-// 定义节点类型
-type ImageGeneratorNode = Node<ImageGeneratorNodeData>;
+function getButtonClass(accent: string) {
+  if (accent === "info") return "btn-info";
+  if (accent === "warning") return "btn-warning";
+  if (accent === "secondary") return "btn-secondary";
+  if (accent === "error") return "btn-error";
+  return "btn-primary";
+}
 
-// Pro 节点预设模型选项
-const proPresetModels = [
-  { value: "gemini-3-pro-image-preview", label: "NanoBanana Pro" },
-];
+function getModelSelectorVariant(accent: string) {
+  if (accent === "info") return "info";
+  if (accent === "warning") return "warning";
+  return "primary";
+}
 
-// Fast 节点预设模型选项
-const fastPresetModels = [
-  { value: "gemini-2.5-flash-image", label: "NanoBanana" },
-];
-
-// NB2 节点预设模型选项
-const nb2PresetModels = [
-  { value: "gemini-3.1-flash-image-preview", label: "NanoBanana2" },
-];
-
-// 基础宽高比选项（NanoBanana 使用）
-const basicAspectRatioOptions = [
-  { value: "1:1", label: "1:1" },
-  { value: "16:9", label: "16:9" },
-  { value: "9:16", label: "9:16" },
-  { value: "4:3", label: "4:3" },
-  { value: "3:4", label: "3:4" },
-];
-
-// Pro 宽高比选项（NanoBanana Pro 使用，支持更多比例）
-const proAspectRatioOptions = [
-  { value: "1:1", label: "1:1" },
-  { value: "16:9", label: "16:9" },
-  { value: "9:16", label: "9:16" },
-  { value: "4:3", label: "4:3" },
-  { value: "3:4", label: "3:4" },
-  { value: "3:2", label: "3:2" },
-  { value: "2:3", label: "2:3" },
-  { value: "5:4", label: "5:4" },
-  { value: "4:5", label: "4:5" },
-  { value: "21:9", label: "21:9" },
-];
-
-// NB2 宽高比选项（Pro 的基础上加 1:4, 4:1, 1:8, 8:1）
-const nb2AspectRatioOptions = [
-  ...proAspectRatioOptions,
-  { value: "1:4", label: "1:4" },
-  { value: "4:1", label: "4:1" },
-  { value: "1:8", label: "1:8" },
-  { value: "8:1", label: "8:1" },
-];
-
-const imageSizeOptions = [
-  { value: "1K", label: "1K" },
-  { value: "2K", label: "2K" },
-  { value: "4K", label: "4K" },
-];
-
-// NB2 分辨率选项（比 Pro 多 512）
-const nb2ImageSizeOptions = [
-  { value: "512", label: "512" },
-  { value: "1K", label: "1K" },
-  { value: "2K", label: "2K" },
-  { value: "4K", label: "4K" },
-];
-
-// 节点变体类型
-type NodeVariant = "pro" | "fast" | "nb2";
-
-// 通用图片生成器节点组件
-function ImageGeneratorBase({
-  id,
-  data,
-  selected,
-  nodeVariant,
-}: NodeProps<ImageGeneratorNode> & { nodeVariant: NodeVariant }) {
-  const { updateNodeData, getConnectedInputDataAsync, getConnectedImagesWithInfo } = useFlowStore();
+function ImageGeneratorNodeBase({ id, data, selected }: NodeProps<ImageGeneratorNodeType>) {
+  const updateNodeData = useFlowStore((s) => s.updateNodeData);
   const [showPreview, setShowPreview] = useState(false);
   const [showErrorDetail, setShowErrorDetail] = useState(false);
+  const isOverlay = data.__renderOverlay === true;
 
-  // 省略号加载动画
+  const engine = data.engine || defaultImageEngine;
+  const config = getImageEngineConfig(engine);
+  const { handleGenerate, model, resolvedSize, sizeValidationError } = useImageGeneratorExecution(id, data);
   const dots = useLoadingDots(data.status === "loading");
-
-  // 使用缓存的连接状态检测，避免每次渲染遍历全图
   const { isPromptConnected, hasEmptyImageInputs, emptyImageLabels } = useNodeConnectionStatus(id);
+  const gptImageSize = resolvedSize;
+  const canGenerate = data.status !== "loading" && isPromptConnected && !sizeValidationError;
 
-  // 保存生成时的画布 ID，用于确保结果更新到正确的画布
-  const canvasIdRef = useRef<string | null>(null);
-
-  // 获取对应的预设模型列表
-  const presetModels = nodeVariant === "pro" ? proPresetModels : nodeVariant === "nb2" ? nb2PresetModels : fastPresetModels;
-
-  // 默认模型
-  const defaultModel: ModelType = nodeVariant === "pro" ? "gemini-3-pro-image-preview" : nodeVariant === "nb2" ? "gemini-3.1-flash-image-preview" : "gemini-2.5-flash-image";
-
-  // 是否显示分辨率控制
-  const showImageSize = nodeVariant === "pro" || nodeVariant === "nb2";
-
-  // 当前使用的宽高比选项
-  const aspectRatioOptions = nodeVariant === "nb2" ? nb2AspectRatioOptions : nodeVariant === "pro" ? proAspectRatioOptions : basicAspectRatioOptions;
-
-  // 当前使用的分辨率选项
-  const currentImageSizeOptions = nodeVariant === "nb2" ? nb2ImageSizeOptions : imageSizeOptions;
-
-  // 使用节点数据中的模型，如果没有则使用默认模型
-  const model: ModelType = data.model || defaultModel;
-
-  // 处理模型变更
-  const handleModelChange = (value: string) => {
-    updateNodeData<ImageGeneratorNodeData>(id, { model: value });
+  const handleEngineChange = (value: string) => {
+    const nextEngine = value as ImageGeneratorEngine;
+    const nextDefaults = getDefaultImageGeneratorData(nextEngine);
+    updateNodeData<ImageGeneratorNodeData>(id, {
+      ...nextDefaults,
+      label: data.label || nextDefaults.label,
+      outputImage: data.outputImage,
+      outputImagePath: data.outputImagePath,
+      status: data.status,
+      error: data.error,
+      errorDetails: data.errorDetails,
+    });
   };
 
-  /**
-   * 更新节点数据，同时更新 canvasStore 确保画布切换后数据正确
-   */
-  const updateNodeDataWithCanvas = useCallback((nodeId: string, nodeData: Partial<ImageGeneratorNodeData>) => {
-    const { activeCanvasId } = useCanvasStore.getState();
-    const targetCanvasId = canvasIdRef.current;
-
-    // 始终更新 flowStore（当前活跃画布的数据）
-    updateNodeData<ImageGeneratorNodeData>(nodeId, nodeData);
-
-    // 如果目标画布不是当前活跃画布，也需要更新 canvasStore
-    if (targetCanvasId && targetCanvasId !== activeCanvasId) {
-      const canvasStore = useCanvasStore.getState();
-      const canvas = canvasStore.canvases.find(c => c.id === targetCanvasId);
-
-      if (canvas) {
-        const updatedNodes = canvas.nodes.map(node => {
-          if (node.id === nodeId) {
-            return {
-              ...node,
-              data: { ...node.data, ...nodeData },
-            };
-          }
-          return node;
-        });
-
-        useCanvasStore.setState(state => ({
-          canvases: state.canvases.map(c =>
-            c.id === targetCanvasId
-              ? { ...c, nodes: updatedNodes, updatedAt: Date.now() }
-              : c
-          ),
-        }));
-      }
-    }
-  }, [updateNodeData]);
-
-  const handleGenerate = useCallback(async () => {
-    // 使用异步版本从文件按需加载图片数据
-    const { prompt, images } = await getConnectedInputDataAsync(id);
-    const { activeCanvasId } = useCanvasStore.getState();
-
-    // 记录当前画布 ID
-    canvasIdRef.current = activeCanvasId;
-
-    if (!prompt) {
-      updateNodeDataWithCanvas(id, {
-        status: "error",
-        error: "请连接提示词节点",
-        errorDetails: undefined,
-      });
-      return;
-    }
-
-    updateNodeDataWithCanvas(id, {
-      status: "loading",
-      error: undefined,
+  const handleModelChange = (value: string) => {
+    updateNodeData<ImageGeneratorNodeData>(id, {
+      model: value,
+      background: value === "gpt-image-2" && data.background === "transparent" ? "auto" : data.background,
     });
-
-    try {
-      // 根据 nodeVariant 确定节点类型
-      const nodeType = nodeVariant === "pro" ? "imageGeneratorPro" : nodeVariant === "nb2" ? "imageGeneratorNB2" : "imageGeneratorFast";
-
-      // 检测是否有蒙版输入，自动增强提示词
-      let finalPrompt = prompt;
-      if (images.length > 0) {
-        const connectedImages = getConnectedImagesWithInfo(id);
-        const hasMaskInput = connectedImages.some((img) => img.hasMask);
-        if (hasMaskInput) {
-          finalPrompt = `I'm providing two images: the original image and the same image with red highlighted areas marking the regions I want you to edit. Please edit ONLY the red-marked areas according to this instruction: ${prompt}`;
-        }
-      }
-
-      const response = images.length > 0
-        ? await editImage({
-            prompt: finalPrompt,
-            model,
-            inputImages: images,
-            aspectRatio: data.aspectRatio,
-            imageSize: showImageSize ? data.imageSize : undefined,
-          }, nodeType)
-        : await generateImage({
-            prompt: finalPrompt,
-            model,
-            aspectRatio: data.aspectRatio,
-            imageSize: showImageSize ? data.imageSize : undefined,
-          }, nodeType);
-
-      if (response.imageData) {
-        if (activeCanvasId) {
-          try {
-            // 1. 先处理输入图片（如果有且未保存到文件系统）
-            const connectedImages = getConnectedImagesWithInfo(id);
-            const inputImagesMetadata: InputImageInfo[] = [];
-
-            for (const img of connectedImages) {
-              let imagePath = img.imagePath;
-
-              // 如果输入图片还没有保存到文件系统，现在保存
-              if (!imagePath && img.imageData) {
-                try {
-                  const inputImageInfo = await saveImage(
-                    img.imageData,
-                    activeCanvasId,
-                    img.id,  // 输入图片节点的 ID
-                    undefined,
-                    undefined,
-                    "input"
-                  );
-                  imagePath = inputImageInfo.path;
-
-                  // 更新输入图片节点的路径，避免下次重复保存
-                  updateNodeData<ImageInputNodeData>(img.id, {
-                    imagePath: inputImageInfo.path,
-                  });
-                } catch (err) {
-                  console.warn("保存输入图片失败:", err);
-                }
-              }
-
-              // 添加到元数据（有路径才添加）
-              if (imagePath) {
-                inputImagesMetadata.push({
-                  path: imagePath,
-                  label: img.fileName || "输入图片",
-                });
-              }
-            }
-
-            // 2. 保存生成的图片和元数据
-            const imageInfo = await saveImage(
-              response.imageData,
-              activeCanvasId,
-              id,
-              prompt,
-              inputImagesMetadata.length > 0 ? inputImagesMetadata : undefined,
-              "generated"
-            );
-
-            // 内存优化：只保存文件路径，不保存 base64 到内存
-            updateNodeDataWithCanvas(id, {
-              status: "success",
-              outputImage: undefined,  // 不再保存 base64 到内存
-              outputImagePath: imageInfo.path,
-              error: undefined,
-            });
-          } catch (saveError) {
-            // 如果文件保存失败，回退到仅 base64 存储
-            console.warn("文件保存失败，回退到 base64 存储:", saveError);
-            updateNodeDataWithCanvas(id, {
-              status: "success",
-              outputImage: response.imageData,
-              outputImagePath: undefined,
-              error: undefined,
-            });
-          }
-        } else {
-          // 没有画布 ID，使用 base64 存储
-          updateNodeDataWithCanvas(id, {
-            status: "success",
-            outputImage: response.imageData,
-            outputImagePath: undefined,
-            error: undefined,
-          });
-        }
-      } else if (response.error) {
-        updateNodeDataWithCanvas(id, {
-          status: "error",
-          error: response.error,
-          errorDetails: response.errorDetails,
-        });
-      } else {
-        updateNodeDataWithCanvas(id, {
-          status: "error",
-          error: "未返回图片数据",
-          errorDetails: undefined,
-        });
-      }
-    } catch {
-      updateNodeDataWithCanvas(id, {
-        status: "error",
-        error: "生成失败",
-        errorDetails: undefined,
-      });
-    }
-  }, [id, model, data.aspectRatio, data.imageSize, nodeVariant, showImageSize, updateNodeDataWithCanvas, getConnectedInputDataAsync, getConnectedImagesWithInfo]);
-
-  // 节点样式配置
-  const headerGradient = nodeVariant === "pro"
-    ? "bg-gradient-to-r from-purple-500 to-pink-500"
-    : nodeVariant === "nb2"
-    ? "bg-gradient-to-r from-cyan-500 to-blue-500"
-    : "bg-gradient-to-r from-amber-500 to-orange-500";
-  const outputHandleColor = nodeVariant === "pro" ? "!bg-pink-500" : nodeVariant === "nb2" ? "!bg-blue-500" : "!bg-orange-500";
+  };
 
   return (
     <>
       <div
         className={`
-          w-[220px] rounded-xl bg-base-100 shadow-lg border-2 transition-all
+          w-[240px] rounded-xl bg-base-100 shadow-lg border-2 transition-all
           ${selected ? "border-primary shadow-primary/20" : "border-base-300"}
         `}
       >
-        {/* 输入端口 - prompt 类型（上方） */}
-        <Handle
-          type="target"
-          position={Position.Left}
-          id="input-prompt"
-          style={{ top: "30%" }}
-          className={`!w-3 !h-3 !bg-blue-500 !border-2 !border-white`}
-        />
-        {/* prompt 端口标签 */}
-        <div
-          className="absolute -left-9 text-[10px] text-base-content/50 tooltip tooltip-left"
-          style={{ top: "30%", transform: "translateY(-100%)" }}
-          data-tip="支持多个输入，将自动拼接"
-        >
-          提示词
-        </div>
-        {/* 输入端口 - image 类型（下方） */}
-        <Handle
-          type="target"
-          position={Position.Left}
-          id="input-image"
-          style={{ top: "70%" }}
-          className={`!w-3 !h-3 !bg-green-500 !border-2 !border-white`}
-        />
-        {/* image 端口标签 */}
-        <div
-          className="absolute -left-9 text-[10px] text-base-content/50"
-          style={{ top: "70%", transform: "translateY(-100%)" }}
-        >
-          参考图
-        </div>
+        {!isOverlay && (
+          <>
+            <Handle
+              type="target"
+              position={Position.Left}
+              id="input-prompt"
+              style={{ top: "30%" }}
+              className="!w-3 !h-3 !bg-blue-500 !border-2 !border-white"
+            />
+            <div
+              className="absolute -left-9 text-[10px] text-base-content/50 tooltip tooltip-left"
+              style={{ top: "30%", transform: "translateY(-100%)" }}
+              data-tip="支持多个输入，将自动拼接"
+            >
+              提示词
+            </div>
+            <Handle
+              type="target"
+              position={Position.Left}
+              id="input-image"
+              style={{ top: "70%" }}
+              className="!w-3 !h-3 !bg-green-500 !border-2 !border-white"
+            />
+            <div
+              className="absolute -left-9 text-[10px] text-base-content/50"
+              style={{ top: "70%", transform: "translateY(-100%)" }}
+            >
+              参考图
+            </div>
+          </>
+        )}
 
-        {/* 节点头部 */}
-        <div className={`flex items-center justify-between px-3 py-2 ${headerGradient} rounded-t-lg`}>
-          <div className="flex items-center gap-2">
-            {nodeVariant === "pro" ? (
-              <Sparkles className="w-4 h-4 text-white" />
-            ) : nodeVariant === "nb2" ? (
-              <Sparkles className="w-4 h-4 text-white" />
-            ) : (
-              <Zap className="w-4 h-4 text-white" />
-            )}
-            <span className="text-sm font-medium text-white">{data.label}</span>
+        <div className={`flex items-center justify-between px-3 py-2 ${config.headerClass} rounded-t-lg`}>
+          <div className="flex items-center gap-2 min-w-0">
+            <ImageIcon className="w-4 h-4 text-white flex-shrink-0" />
+            <span className="text-sm font-medium text-white truncate">{data.label || "绘图生成"}</span>
           </div>
           <div className="flex items-center gap-1">
-            {/* 未连接提示词警告 */}
             {!isPromptConnected && (
               <div className="tooltip tooltip-left" data-tip="请连接提示词节点">
                 <CircleAlert className="w-4 h-4 text-white/80" />
               </div>
             )}
-            {/* 空输入警告图标 */}
             {isPromptConnected && hasEmptyImageInputs && (
               <div className="tooltip tooltip-left" data-tip={`图片输入为空: ${emptyImageLabels.join(", ")}`}>
                 <AlertTriangle className="w-4 h-4 text-yellow-300" />
               </div>
             )}
-            {nodeVariant === "pro" && (
-              <span className="text-[10px] bg-white/20 px-1.5 py-0.5 rounded text-white">PRO</span>
-            )}
           </div>
         </div>
 
-        {/* 节点内容 */}
         <div className="p-2 space-y-2 nodrag">
-          {/* 模型选择 - 使用 Portal 渲染避免模糊 */}
+          <div>
+            <label className="text-xs text-base-content/60 mb-0.5 block">绘图引擎</label>
+            <select
+              className="select select-bordered select-xs w-full"
+              value={engine}
+              onChange={(e) => handleEngineChange(e.target.value)}
+              onPointerDown={(e) => e.stopPropagation()}
+            >
+              {imageEngineOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <ModelSelector
             value={model}
-            options={presetModels}
+            options={config.presetModels}
             onChange={handleModelChange}
-            variant={nodeVariant === "pro" ? "primary" : nodeVariant === "nb2" ? "info" : "warning"}
+            variant={getModelSelectorVariant(config.accent)}
             allowCustom={true}
             modelCategory="imageGenerator"
           />
 
-          {/* 配置选项 */}
-          <div className="space-y-1.5">
-            <div>
-              <label className="text-xs text-base-content/60 mb-0.5 block">宽高比</label>
-              <div className="grid grid-cols-5 gap-1">
-                {aspectRatioOptions.map((opt) => (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    className={`
-                      btn btn-xs px-0
-                      ${ (data.aspectRatio || "1:1") === opt.value
-                        ? (nodeVariant === "pro" ? "btn-primary" : nodeVariant === "nb2" ? "btn-info" : "btn-warning")
-                        : "btn-ghost bg-base-200"
-                      }
-                    `}
-                    onPointerDown={(e) => e.stopPropagation()}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      updateNodeData<ImageGeneratorNodeData>(id, {
-                        aspectRatio: opt.value as ImageGeneratorNodeData["aspectRatio"],
-                      });
-                    }}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
+          <div className="grid grid-cols-2 gap-1.5 text-[11px]">
+            <div className="rounded-md bg-base-200 px-2 py-1">
+              <div className="text-base-content/45">引擎</div>
+              <div className="truncate font-medium">{config.shortLabel}</div>
+            </div>
+            <div className="rounded-md bg-base-200 px-2 py-1">
+              <div className="text-base-content/45">尺寸</div>
+              <div className="truncate font-medium">
+                {config.hasGptImageControls ? gptImageSize : data.imageSize || data.aspectRatio || "自动"}
               </div>
             </div>
-            {showImageSize && (
-              <div>
-                <label className="text-xs text-base-content/60 mb-0.5 block">分辨率</label>
-                <div className={`grid ${nodeVariant === "nb2" ? "grid-cols-4" : "grid-cols-3"} gap-1`}>
-                  {currentImageSizeOptions.map((opt) => (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      className={`
-                        btn btn-xs
-                        ${ (data.imageSize || "1K") === opt.value
-                          ? (nodeVariant === "pro" ? "btn-primary" : "btn-info")
-                          : "btn-ghost bg-base-200"
-                        }
-                      `}
-                      onPointerDown={(e) => e.stopPropagation()}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        updateNodeData<ImageGeneratorNodeData>(id, {
-                          imageSize: opt.value as ImageGeneratorNodeData["imageSize"],
-                        });
-                      }}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
 
-          {/* 生成按钮 */}
+          {sizeValidationError && (
+            <div className="flex items-start gap-2 text-warning text-xs bg-warning/10 p-2 rounded">
+              <AlertTriangle className="w-3 h-3 flex-shrink-0 mt-0.5" />
+              <span className="line-clamp-2 break-all">{sizeValidationError}</span>
+            </div>
+          )}
+
           <button
-            className={`btn btn-sm w-full gap-2 ${
-              data.status === "loading" || !isPromptConnected
-                ? "btn-disabled"
-                : nodeVariant === "pro" ? "btn-primary" : nodeVariant === "nb2" ? "btn-info" : "btn-warning"
-            }`}
+            className={`btn btn-sm w-full gap-2 ${canGenerate ? getButtonClass(config.accent) : "btn-disabled"}`}
             onClick={handleGenerate}
             onPointerDown={(e) => e.stopPropagation()}
-            disabled={data.status === "loading" || !isPromptConnected}
+            disabled={!canGenerate}
           >
             {data.status === "loading" ? (
               <span>生成中{dots}</span>
@@ -483,7 +202,6 @@ function ImageGeneratorBase({
             )}
           </button>
 
-          {/* 错误信息 */}
           {data.status === "error" && data.error && (
             <div
               className="flex items-start gap-2 text-error text-xs bg-error/10 p-2 rounded cursor-pointer hover:bg-error/20 transition-colors"
@@ -495,7 +213,6 @@ function ImageGeneratorBase({
             </div>
           )}
 
-          {/* 预览图 - 桌面端使用本地文件存储 */}
           {(data.outputImage || data.outputImagePath) && (
             <div
               className="relative group cursor-pointer"
@@ -504,11 +221,7 @@ function ImageGeneratorBase({
             >
               <div className="w-full h-[120px] overflow-hidden rounded-lg bg-base-200">
                 <img
-                  src={
-                    data.outputImagePath
-                      ? getImageUrl(data.outputImagePath)
-                      : `data:image/png;base64,${data.outputImage}`
-                  }
+                  src={data.outputImagePath ? getImageUrl(data.outputImagePath) : `data:image/png;base64,${data.outputImage}`}
                   alt="Generated"
                   className="w-full h-full object-cover"
                 />
@@ -520,16 +233,16 @@ function ImageGeneratorBase({
           )}
         </div>
 
-        {/* 输出端口 - image 类型 */}
-        <Handle
-          type="source"
-          position={Position.Right}
-          id="output-image"
-          className={`!w-3 !h-3 ${outputHandleColor} !border-2 !border-white`}
-        />
+        {!isOverlay && (
+          <Handle
+            type="source"
+            position={Position.Right}
+            id="output-image"
+            className={`!w-3 !h-3 ${config.outputHandleClass} !border-2 !border-white`}
+          />
+        )}
       </div>
 
-      {/* 预览弹窗 - 支持文件路径和 base64 */}
       {showPreview && (data.outputImage || data.outputImagePath) && (
         <ImagePreviewModal
           imageData={data.outputImage}
@@ -538,7 +251,6 @@ function ImageGeneratorBase({
         />
       )}
 
-      {/* 错误详情弹窗 */}
       {showErrorDetail && data.error && (
         <ErrorDetailModal
           error={data.error}
@@ -551,20 +263,16 @@ function ImageGeneratorBase({
   );
 }
 
-// NanoBanana Pro 节点 (支持 4K)
-export const ImageGeneratorProNode = memo((props: NodeProps<ImageGeneratorNode>) => {
-  return <ImageGeneratorBase {...props} nodeVariant="pro" />;
-});
-ImageGeneratorProNode.displayName = "ImageGeneratorProNode";
+export const ImageGeneratorNode = memo(ImageGeneratorNodeBase);
+ImageGeneratorNode.displayName = "ImageGeneratorNode";
 
-// NanoBanana 节点 (快速)
-export const ImageGeneratorFastNode = memo((props: NodeProps<ImageGeneratorNode>) => {
-  return <ImageGeneratorBase {...props} nodeVariant="fast" />;
-});
-ImageGeneratorFastNode.displayName = "ImageGeneratorFastNode";
-
-// NanoBanana2 节点 (推荐首选)
-export const ImageGeneratorNB2Node = memo((props: NodeProps<ImageGeneratorNode>) => {
-  return <ImageGeneratorBase {...props} nodeVariant="nb2" />;
-});
-ImageGeneratorNB2Node.displayName = "ImageGeneratorNB2Node";
+export function getImageGeneratorInspectorSummary(data: ImageGeneratorNodeData) {
+  const config = getImageEngineConfig(data.engine);
+  return {
+    engineLabel: config.label,
+    modelLabel: getImageModelDisplayName(data),
+    sizeLabel: config.hasGptImageControls
+      ? getResolvedGptImageSize(data)
+      : data.imageSize || data.aspectRatio || "自动",
+  };
+}

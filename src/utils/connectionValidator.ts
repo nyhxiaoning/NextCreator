@@ -237,10 +237,7 @@ export function validateConnection(
   // - prompt 输入: 允许多个连接（会自动拼接）
   // - image 输入: ImageGenerator 和 PPTContent 允许多个，VideoGenerator 只允许一个
   const isMultiImageAllowed =
-    targetNode.type === "imageGeneratorProNode" ||
-    targetNode.type === "imageGeneratorFastNode" ||
-    targetNode.type === "imageGeneratorNB2Node" ||
-    targetNode.type === "gptImageGeneratorNode" ||
+    targetNode.type === "imageGeneratorNode" ||
     targetNode.type === "pptContentNode" ||
     targetNode.type === "veoGeneratorNode";
 

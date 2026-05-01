@@ -13,6 +13,7 @@ type PromptNode = Node<PromptNodeData>;
 export const PromptNode = memo(({ id, data, selected }: NodeProps<PromptNode>) => {
   const updateNodeData = useFlowStore((state) => state.updateNodeData);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const isOverlay = data.__renderOverlay === true;
 
   const prompt = data.prompt || "";
 
@@ -84,13 +85,14 @@ export const PromptNode = memo(({ id, data, selected }: NodeProps<PromptNode>) =
           </p>
         </div>
 
-        {/* 输出端口 - prompt 类型 */}
-        <Handle
-          type="source"
-          position={Position.Right}
-          id="output-prompt"
-          className="!w-3 !h-3 !bg-blue-500 !border-2 !border-white"
-        />
+        {!isOverlay && (
+          <Handle
+            type="source"
+            position={Position.Right}
+            id="output-prompt"
+            className="!w-3 !h-3 !bg-blue-500 !border-2 !border-white"
+          />
+        )}
       </div>
 
       {/* 编辑弹窗 */}

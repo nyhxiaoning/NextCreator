@@ -69,6 +69,7 @@ export const VideoGeneratorNode = memo(({ id, data, selected }: NodeProps<VideoG
   const [isDownloading, setIsDownloading] = useState(false);
   const [showErrorDetail, setShowErrorDetail] = useState(false);
   const [errorToShow, setErrorToShow] = useState<string | null>(null);
+  const isOverlay = data.__renderOverlay === true;
 
   // 省略号加载动画
   const dots = useLoadingDots(data.status === "loading" || previewState === "loading" || isDownloading);
@@ -255,37 +256,37 @@ export const VideoGeneratorNode = memo(({ id, data, selected }: NodeProps<VideoG
           ${selected ? "border-primary shadow-primary/20" : "border-base-300"}
         `}
       >
-        {/* 输入端口 - prompt 类型（上方） */}
-        <Handle
-          type="target"
-          position={Position.Left}
-          id="input-prompt"
-          style={{ top: "30%" }}
-          className="!w-3 !h-3 !bg-blue-500 !border-2 !border-white"
-        />
-        {/* prompt 端口标签 */}
-        <div
-          className="absolute -left-9 text-[10px] text-base-content/50 tooltip tooltip-left"
-          style={{ top: "30%", transform: "translateY(-100%)" }}
-          data-tip="支持多个输入，将自动拼接"
-        >
-          提示词
-        </div>
-        {/* 输入端口 - image 类型（下方） */}
-        <Handle
-          type="target"
-          position={Position.Left}
-          id="input-image"
-          style={{ top: "70%" }}
-          className="!w-3 !h-3 !bg-green-500 !border-2 !border-white"
-        />
-        {/* image 端口标签 */}
-        <div
-          className="absolute -left-9 text-[10px] text-base-content/50"
-          style={{ top: "70%", transform: "translateY(-100%)" }}
-        >
-          首帧图
-        </div>
+        {!isOverlay && (
+          <>
+            <Handle
+              type="target"
+              position={Position.Left}
+              id="input-prompt"
+              style={{ top: "30%" }}
+              className="!w-3 !h-3 !bg-blue-500 !border-2 !border-white"
+            />
+            <div
+              className="absolute -left-9 text-[10px] text-base-content/50 tooltip tooltip-left"
+              style={{ top: "30%", transform: "translateY(-100%)" }}
+              data-tip="支持多个输入，将自动拼接"
+            >
+              提示词
+            </div>
+            <Handle
+              type="target"
+              position={Position.Left}
+              id="input-image"
+              style={{ top: "70%" }}
+              className="!w-3 !h-3 !bg-green-500 !border-2 !border-white"
+            />
+            <div
+              className="absolute -left-9 text-[10px] text-base-content/50"
+              style={{ top: "70%", transform: "translateY(-100%)" }}
+            >
+              首帧图
+            </div>
+          </>
+        )}
 
         {/* 节点头部 */}
         <div className={`flex items-center justify-between px-3 py-2 ${headerGradient} rounded-t-lg`}>
@@ -430,13 +431,14 @@ export const VideoGeneratorNode = memo(({ id, data, selected }: NodeProps<VideoG
           )}
         </div>
 
-        {/* 输出端口 - video 类型 */}
-        <Handle
-          type="source"
-          position={Position.Right}
-          id="output-video"
-          className={`!w-3 !h-3 ${outputHandleColor} !border-2 !border-white`}
-        />
+        {!isOverlay && (
+          <Handle
+            type="source"
+            position={Position.Right}
+            id="output-video"
+            className={`!w-3 !h-3 ${outputHandleColor} !border-2 !border-white`}
+          />
+        )}
       </div>
 
       {/* 详情配置弹窗 */}

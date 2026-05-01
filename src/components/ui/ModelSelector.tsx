@@ -1,6 +1,6 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
 import { createPortal } from "react-dom";
-import { ChevronDown, X, Check, Trash2 } from "lucide-react";
+import { ChevronDown, X, Check, Trash2, Search, Plus } from "lucide-react";
 import { useCustomModelStore, type ModelCategory } from "@/stores/customModelStore";
 
 export interface ModelOption {
@@ -23,6 +23,8 @@ interface ModelSelectorProps {
   className?: string;
   /** 模型分类，用于保存和读取用户自定义模型 */
   modelCategory?: ModelCategory;
+  /** 展示方式：modal 适合画布节点，inline 适合右侧 Inspector */
+  mode?: "modal" | "inline";
 }
 
 /**
@@ -39,27 +41,29 @@ export function ModelSelector({
   title = "选择模型",
   className = "",
   modelCategory,
+  mode = "modal",
 }: ModelSelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
   const customModels = useCustomModelStore((state) =>
     modelCategory ? state.getCustomModels(modelCategory) : []
   );
 
+  const selectedPreset = options.find((opt) => opt.value === value);
   // 检查是否是自定义模型（不在预设列表中）
-  const isCustomModel = !options.some((opt) => opt.value === value);
-
-  // 获取显示的模型名称（包含真实模型名）
-  const getDisplayName = () => {
-    const preset = options.find((opt) => opt.value === value);
-    if (preset) {
-      // 如果 label 和 value 相同，只显示一个
-      return preset.label === preset.value ? preset.label : `${preset.label} (${preset.value})`;
-    }
-    return value;
-  };
-
-  // 打开弹窗
-  const openModal = () => setIsOpen(true);
+  const isCustomModel = Boolean(value) && !selectedPreset;
+  const compactDisplayName = selectedPreset
+    ? selectedPreset.label === selectedPreset.value
+      ? selectedPreset.label
+      : `${selectedPreset.label} (${selectedPreset.value})`
+    : value || "选择模型";
+  const inlineDisplayLabel = selectedPreset?.label || value || "选择模型";
+  const inlineDisplayMeta = selectedPreset && selectedPreset.label !== selectedPreset.value
+    ? selectedPreset.value
+    : isCustomModel
+      ? "自定义模型"
+      : "";
+  const accentTextClass = getAccentTextClass(variant);
 
   // 处理选择
   const handleSelect = (newValue: string) => {
@@ -67,23 +71,62 @@ export function ModelSelector({
     setIsOpen(false);
   };
 
+  useEffect(() => {
+    if (mode !== "inline" || !isOpen) return;
+
+    const handleClickOutside = (event: globalThis.MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isOpen, mode]);
+
   return (
-    <div className={`${className}`} onPointerDown={(e) => e.stopPropagation()}>
+    <div
+      ref={containerRef}
+      className={`relative ${className}`}
+      onPointerDown={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
+    >
       <label className="text-xs text-base-content/60 mb-0.5 block">模型</label>
       <button
         type="button"
-        className="w-full flex items-center justify-between px-2 py-1.5 bg-base-200 hover:bg-base-300 rounded-lg text-xs transition-colors border border-base-300"
-        onClick={openModal}
+        className={`
+          w-full flex items-center justify-between gap-2 rounded-lg
+          bg-base-200/70 hover:bg-base-200 border border-base-300/70
+          transition-colors
+          ${mode === "inline" ? "min-h-9 px-3 py-2 text-sm" : "px-2 py-1.5 text-xs"}
+          ${isOpen ? `bg-base-100 ring-2 ${getOpenStateClass(variant)}` : ""}
+        `}
+        onClick={() => setIsOpen((open) => !open)}
         onPointerDown={(e) => e.stopPropagation()}
       >
-        <span className={isCustomModel ? "text-primary font-medium truncate" : "truncate"}>
-          {getDisplayName()}
+        <span className="min-w-0 flex-1 text-left">
+          <span className={`block truncate ${isCustomModel ? `${accentTextClass} font-medium` : "text-base-content"}`}>
+            {mode === "inline" ? inlineDisplayLabel : compactDisplayName}
+          </span>
+          {mode === "inline" && inlineDisplayMeta && (
+            <span className="mt-0.5 block truncate text-[11px] leading-none text-base-content/45">
+              {inlineDisplayMeta}
+            </span>
+          )}
         </span>
-        <ChevronDown className="w-3 h-3 flex-shrink-0" />
+        <ChevronDown className={`w-3.5 h-3.5 flex-shrink-0 text-base-content/45 ${isOpen ? "rotate-180" : ""}`} />
       </button>
 
-      {/* Modal 弹窗 */}
-      {isOpen && (
+      {isOpen && mode === "modal" && (
         <ModelSelectorModal
           value={value}
           options={options}
@@ -97,6 +140,297 @@ export function ModelSelector({
           customModels={customModels}
         />
       )}
+      {isOpen && mode === "inline" && (
+        <ModelSelectorDropdown
+          value={value}
+          options={options}
+          onChange={handleSelect}
+          allowCustom={allowCustom}
+          customPlaceholder={customPlaceholder}
+          variant={variant}
+          modelCategory={modelCategory}
+          customModels={customModels}
+        />
+      )}
+    </div>
+  );
+}
+
+interface ModelSelectorDropdownProps {
+  value: string;
+  options: ModelOption[];
+  onChange: (value: string) => void;
+  allowCustom: boolean;
+  customPlaceholder: string;
+  variant: "primary" | "warning" | "info";
+  modelCategory?: ModelCategory;
+  customModels: string[];
+}
+
+function getSelectedBgClass(variant: "primary" | "warning" | "info") {
+  switch (variant) {
+    case "warning":
+      return "bg-warning/15 text-warning border-warning/25 shadow-[inset_3px_0_0_hsl(var(--wa))]";
+    case "info":
+      return "bg-info/15 text-info border-info/25 shadow-[inset_3px_0_0_hsl(var(--in))]";
+    default:
+      return "bg-primary/15 text-primary border-primary/25 shadow-[inset_3px_0_0_hsl(var(--p))]";
+  }
+}
+
+function getOpenStateClass(variant: "primary" | "warning" | "info") {
+  switch (variant) {
+    case "warning":
+      return "border-warning/50 ring-warning/15";
+    case "info":
+      return "border-info/50 ring-info/15";
+    default:
+      return "border-primary/50 ring-primary/15";
+  }
+}
+
+function getAccentTextClass(variant: "primary" | "warning" | "info") {
+  switch (variant) {
+    case "warning":
+      return "text-warning";
+    case "info":
+      return "text-info";
+    default:
+      return "text-primary";
+  }
+}
+
+function getAccentSoftClass(variant: "primary" | "warning" | "info") {
+  switch (variant) {
+    case "warning":
+      return "bg-warning/10 text-warning border-warning/20 hover:bg-warning/15";
+    case "info":
+      return "bg-info/10 text-info border-info/20 hover:bg-info/15";
+    default:
+      return "bg-primary/10 text-primary border-primary/20 hover:bg-primary/15";
+  }
+}
+
+function modelMatchesQuery(label: string, value: string, query: string) {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) return true;
+  return `${label} ${value}`.toLowerCase().includes(normalizedQuery);
+}
+
+function ModelSelectorDropdown({
+  value,
+  options,
+  onChange,
+  allowCustom,
+  customPlaceholder,
+  variant,
+  modelCategory,
+  customModels,
+}: ModelSelectorDropdownProps) {
+  const [query, setQuery] = useState("");
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const { addCustomModel, removeCustomModel } = useCustomModelStore();
+  const isCustomModel = !options.some((opt) => opt.value === value) && !customModels.includes(value);
+  const trimmedQuery = query.trim();
+  const filteredOptions = options.filter((opt) => modelMatchesQuery(opt.label, opt.value, query));
+  const filteredCustomModels = customModels.filter((model) => modelMatchesQuery(model, model, query));
+  const exactMatchExists = [...options.map((opt) => opt.value), ...customModels].some(
+    (model) => model.toLowerCase() === trimmedQuery.toLowerCase()
+  );
+  const canAddQuery = allowCustom && trimmedQuery.length > 0 && !exactMatchExists;
+  const hasResults = filteredOptions.length > 0 || filteredCustomModels.length > 0 || canAddQuery;
+  const selectedClassName = getSelectedBgClass(variant);
+  const addOptionClassName = getAccentSoftClass(variant);
+
+  useEffect(() => {
+    searchInputRef.current?.focus();
+  }, []);
+
+  const handleCustomModelSubmit = (modelName = query) => {
+    const trimmed = modelName.trim();
+    if (!trimmed) return;
+    if (modelCategory) {
+      addCustomModel(modelCategory, trimmed);
+    }
+    onChange(trimmed);
+  };
+
+  const handleRemoveCustomModel = (model: string, event: ReactMouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    if (modelCategory) {
+      removeCustomModel(modelCategory, model);
+    }
+  };
+
+  const handleSearchKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    const firstMatch = filteredOptions[0]?.value || filteredCustomModels[0];
+    if (firstMatch) {
+      onChange(firstMatch);
+      return;
+    }
+    if (canAddQuery) {
+      handleCustomModelSubmit(trimmedQuery);
+    }
+  };
+
+  const renderPresetOption = (opt: ModelOption) => {
+    const selected = value === opt.value;
+
+    return (
+      <button
+        key={opt.value}
+        type="button"
+        className={`
+          flex w-full items-center justify-between gap-2 rounded-md border px-2.5 py-2 text-left text-sm
+          transition-colors
+          ${selected
+            ? selectedClassName
+            : "border-transparent bg-transparent text-base-content hover:bg-base-200/80"
+          }
+        `}
+        onClick={() => onChange(opt.value)}
+      >
+        <span className="min-w-0">
+          <span className="block truncate font-medium">{opt.label}</span>
+          {opt.label !== opt.value && (
+            <span className="mt-0.5 block truncate text-[11px] leading-none text-base-content/45">
+              {opt.value}
+            </span>
+          )}
+        </span>
+        {selected && <Check className="h-4 w-4 flex-shrink-0" />}
+      </button>
+    );
+  };
+
+  const renderCustomOption = (model: string) => {
+    const selected = value === model;
+
+    return (
+      <div
+        key={model}
+        className={`
+          group flex w-full items-center rounded-md border text-sm transition-colors
+          ${selected
+            ? selectedClassName
+            : "border-transparent bg-transparent text-base-content hover:bg-base-200/80"
+          }
+        `}
+      >
+        <button
+          type="button"
+          className="flex min-w-0 flex-1 items-center justify-between gap-2 px-2.5 py-2 text-left"
+          onClick={() => onChange(model)}
+        >
+          <span className="min-w-0">
+            <span className="block truncate font-medium">{model}</span>
+            <span className="mt-0.5 block truncate text-[11px] leading-none text-base-content/45">
+              自定义模型
+            </span>
+          </span>
+          {selected && <Check className="h-4 w-4" />}
+        </button>
+        <span className="flex flex-shrink-0 items-center pr-1.5">
+          <button
+            type="button"
+            className="
+              rounded p-1 text-base-content/40 opacity-0 transition-colors
+              hover:bg-error/15 hover:text-error group-hover:opacity-100 focus:opacity-100
+            "
+            onClick={(event) => handleRemoveCustomModel(model, event)}
+            title="删除此模型"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        </span>
+      </div>
+    );
+  };
+
+  return (
+    <div
+      className="absolute left-0 right-0 top-full z-[80] mt-1 overflow-hidden rounded-xl border border-base-300 bg-base-100 shadow-xl"
+      onPointerDown={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
+    >
+      <div className="border-b border-base-300/70 bg-base-200/25 p-2">
+        <div className="flex items-center gap-2 rounded-lg border border-base-300/70 bg-base-100 px-2.5 py-2">
+          <Search className="h-3.5 w-3.5 flex-shrink-0 text-base-content/35" />
+          <input
+            ref={searchInputRef}
+            type="text"
+            className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-base-content/35"
+            placeholder={allowCustom ? customPlaceholder : "搜索模型"}
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={handleSearchKeyDown}
+          />
+        </div>
+      </div>
+
+      <div className="max-h-72 overflow-y-auto p-1.5">
+        {isCustomModel && value && (
+          <button
+            type="button"
+            className={`mb-1 flex w-full items-center justify-between gap-2 rounded-md border px-2.5 py-2 text-left text-sm ${selectedClassName}`}
+            onClick={() => onChange(value)}
+          >
+            <span className="min-w-0">
+              <span className="block truncate font-medium">{value}</span>
+              <span className="mt-0.5 block truncate text-[11px] leading-none opacity-70">
+                当前自定义模型
+              </span>
+            </span>
+            <Check className="h-4 w-4 flex-shrink-0" />
+          </button>
+        )}
+
+        {filteredOptions.length > 0 && (
+          <div className="space-y-1">
+            <div className="px-2 py-1 text-[11px] font-medium text-base-content/45">预设模型</div>
+            {filteredOptions.map(renderPresetOption)}
+          </div>
+        )}
+
+        {allowCustom && filteredCustomModels.length > 0 && (
+          <div className="mt-1 border-t border-base-300/70 pt-1.5">
+            <div className="px-2 py-1 text-[11px] font-medium text-base-content/45">我的模型</div>
+            {filteredCustomModels.map(renderCustomOption)}
+          </div>
+        )}
+
+        {canAddQuery && (
+          <div className={filteredOptions.length > 0 || filteredCustomModels.length > 0 ? "mt-1 border-t border-base-300/70 pt-1.5" : ""}>
+            <button
+              type="button"
+              className={`flex w-full items-center gap-2 rounded-md border px-2.5 py-2 text-left text-sm transition-colors ${addOptionClassName}`}
+              onClick={() => handleCustomModelSubmit(trimmedQuery)}
+            >
+              <Plus className="h-4 w-4 flex-shrink-0" />
+              <span className="min-w-0">
+                <span className="block truncate font-medium">添加 “{trimmedQuery}”</span>
+                <span className="mt-0.5 block truncate text-[11px] leading-none opacity-70">
+                  保存为自定义模型
+                </span>
+              </span>
+            </button>
+          </div>
+        )}
+
+        {!hasResults && (
+          <div className="px-3 py-6 text-center text-xs text-base-content/45">
+            没有匹配的模型
+          </div>
+        )}
+
+        {allowCustom && !trimmedQuery && (
+          <div className="border-t border-base-300/70 px-2 py-2 text-[11px] text-base-content/40">
+            输入模型名后按 Enter 可添加自定义模型
+          </div>
+        )}
+      </div>
     </div>
   );
 }
