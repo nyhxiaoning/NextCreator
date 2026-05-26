@@ -23,3 +23,4 @@ dist-ssr
 *.sln
 *.sw?
 .ace-tool/
+pnpm-lock.yaml
