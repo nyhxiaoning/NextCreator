@@ -1,15 +1,8 @@
-<div align="center">
-  <img src="docs/images/logo.png" alt="NextCreator Logo" width="120" />
-  <h1>NextCreator</h1>
-  <p>基于可视化节点的 AI 内容生成工作流工具</p>
+## 使用说明
+### 本地启动说明
+pnpm i默认使用启动，然后此时使用的时候。
 
-  ![Version](https://img.shields.io/badge/version-0.2.6-blue.svg)
-  ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey.svg)
-  ![Tauri](https://img.shields.io/badge/Tauri-2.0-24C8DB.svg?logo=tauri&logoColor=white)
-  ![License](https://img.shields.io/badge/license-AGPL%20v3-blue.svg)
-</div>
 
----
 
 ## 功能特性
 
