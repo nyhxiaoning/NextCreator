@@ -51,6 +51,13 @@ const nodeTypeConfig: { key: keyof NodeProviderMapping; label: string; descripti
   { key: "newApiVideoGenerator", label: "new-api 通用视频", description: "统一视频节点的 /v1/video/generations 供应商" },
   { key: "veoGenerator", label: "Veo 视频生成", description: "Gemini Veo 视频生成节点" },
   { key: "klingGenerator", label: "Kling 视频生成", description: "Kling 视频生成节点" },
+  { key: "doubaoVideoGenerator", label: "豆包视频", description: "字节跳动豆包视频生成节点" },
+  { key: "bailianWanGenerator", label: "百炼万象视频", description: "阿里云百炼万象视频生成节点" },
+  { key: "qwenImageGenerator", label: "百炼 Qwen 图片", description: "阿里云百炼 Qwen 图片生成节点" },
+  { key: "wanxiangGenerator", label: "万象图片", description: "阿里云万象图片生成节点" },
+  { key: "seedreamGenerator", label: "Seedream 图片", description: "Seedream 图片生成节点" },
+  { key: "deepseekGenerator", label: "Deepseek 文本", description: "Deepseek 文本模型内容生成节点" },
+  { key: "kimiGenerator", label: "Kimi 文本", description: "Kimi 文本模型内容生成节点" },
   { key: "llmContent", label: "LLM 内容生成", description: "大语言模型内容生成节点" },
   { key: "llm", label: "PPT 大纲生成", description: "PPT 内容节点的大纲生成部分" },
 ];
@@ -76,6 +83,7 @@ const nodeGroups: NodeGroup[] = [
       "imageGeneratorPro", "imageGeneratorFast", "imageGeneratorNB2",
       "dalleGenerator", "fluxGenerator", "gptImageGenerator",
       "doubaoGenerator", "zImageGenerator",
+      "qwenImageGenerator", "wanxiangGenerator", "seedreamGenerator",
     ],
   },
   {
@@ -84,7 +92,7 @@ const nodeGroups: NodeGroup[] = [
     icon: Video,
     colorClass: "text-purple-500",
     bgClass: "bg-purple-500/10",
-    nodeKeys: ["videoGenerator", "newApiVideoGenerator"],
+    nodeKeys: ["videoGenerator", "newApiVideoGenerator", "veoGenerator", "klingGenerator", "doubaoVideoGenerator", "bailianWanGenerator"],
   },
   {
     id: "llm",
@@ -92,12 +100,30 @@ const nodeGroups: NodeGroup[] = [
     icon: MessageSquare,
     colorClass: "text-green-500",
     bgClass: "bg-green-500/10",
-    nodeKeys: ["llmContent", "llm"],
+    nodeKeys: ["llmContent", "llm", "deepseekGenerator", "kimiGenerator"],
   },
 ];
 
 // 根据 key 查找节点配置
 const nodeConfigMap = new Map(nodeTypeConfig.map((n) => [n.key, n]));
+
+// 供应商分类映射 - 用于自动切换注入
+// 当用户为某分类下的一个节点分配供应商时，同一分类下其他兼容协议的同供应商也会自动注入
+const providerCategoryMap: Record<string, (keyof NodeProviderMapping)[]> = {
+  image: [
+    "imageGeneratorPro", "imageGeneratorFast", "imageGeneratorNB2",
+    "dalleGenerator", "fluxGenerator", "gptImageGenerator",
+    "doubaoGenerator", "zImageGenerator",
+    "qwenImageGenerator", "wanxiangGenerator", "seedreamGenerator",
+  ],
+  video: [
+    "videoGenerator", "newApiVideoGenerator", "veoGenerator",
+    "klingGenerator", "doubaoVideoGenerator", "bailianWanGenerator",
+  ],
+  llm: [
+    "llmContent", "llm", "deepseekGenerator", "kimiGenerator",
+  ],
+};
 
 export function ProviderPanel() {
   const {
@@ -154,7 +180,28 @@ export function ProviderPanel() {
 
   // 自动保存：直接更新 store
   const handleNodeProviderChange = (nodeKey: keyof NodeProviderMapping, providerId: string) => {
+    // 为当前节点设置供应商
     setNodeProvider(nodeKey, providerId || undefined);
+
+    // 自动分类注入：同分类下未配置的同协议节点也使用此供应商
+    if (providerId) {
+      const provider = providers.find((p) => p.id === providerId);
+      if (provider) {
+        for (const [, nodeKeys] of Object.entries(providerCategoryMap)) {
+          // 只处理与当前节点同分类的节点
+          if ((nodeKeys as (keyof NodeProviderMapping)[]).includes(nodeKey)) {
+            for (const key of nodeKeys as (keyof NodeProviderMapping)[]) {
+              // 跳过自身，只注入到尚未配置的节点
+              if (key !== nodeKey && !nodeProviders[key]) {
+                if (NODE_ALLOWED_PROTOCOLS[key].includes(provider.protocol)) {
+                  setNodeProvider(key, providerId);
+                }
+              }
+            }
+          }
+        }
+      }
+    }
   };
 
   // 批量分配：将供应商分配给分组内所有兼容节点
@@ -597,6 +644,66 @@ function ProviderEditModal({ provider, onSave, onClose }: ProviderEditModalProps
             </label>
           </div>
         </div>
+
+        {/* 快速模板 - 仅在添加时显示 */}
+        {!isEditing && (
+          <div className="px-5 pb-4">
+            <div className="flex items-center gap-1.5 mb-2">
+              <div className="text-xs font-medium text-base-content/50 uppercase tracking-wider">快速模板</div>
+              <div className="flex-1 h-px bg-base-200" />
+            </div>
+            <div className="grid grid-cols-2 gap-1.5">
+              <button
+                type="button"
+                className="flex items-center gap-2 px-2.5 py-2 rounded-lg border border-base-300 hover:border-primary/40 hover:bg-primary/5 transition-colors text-left"
+                onClick={() => { setName('Deepseek'); setBaseUrl('https://api.deepseek.com'); setProtocol('openai'); }}
+              >
+                <span className="text-xs font-medium">Deepseek</span>
+                <span className="text-[10px] text-base-content/40 ml-auto">文本</span>
+              </button>
+              <button
+                type="button"
+                className="flex items-center gap-2 px-2.5 py-2 rounded-lg border border-base-300 hover:border-primary/40 hover:bg-primary/5 transition-colors text-left"
+                onClick={() => { setName('Kimi'); setBaseUrl('https://api.moonshot.cn'); setProtocol('openai'); }}
+              >
+                <span className="text-xs font-medium">Kimi</span>
+                <span className="text-[10px] text-base-content/40 ml-auto">文本</span>
+              </button>
+              <button
+                type="button"
+                className="flex items-center gap-2 px-2.5 py-2 rounded-lg border border-base-300 hover:border-primary/40 hover:bg-primary/5 transition-colors text-left"
+                onClick={() => { setName('百炼万象'); setBaseUrl('https://dashscope.aliyuncs.com/compatible-mode/v1'); setProtocol('openai'); }}
+              >
+                <span className="text-xs font-medium">百炼万象</span>
+                <span className="text-[10px] text-base-content/40 ml-auto">视频</span>
+              </button>
+              <button
+                type="button"
+                className="flex items-center gap-2 px-2.5 py-2 rounded-lg border border-base-300 hover:border-primary/40 hover:bg-primary/5 transition-colors text-left"
+                onClick={() => { setName('百炼 Qwen'); setBaseUrl('https://dashscope.aliyuncs.com/compatible-mode/v1'); setProtocol('openai'); }}
+              >
+                <span className="text-xs font-medium">百炼 Qwen</span>
+                <span className="text-[10px] text-base-content/40 ml-auto">图片</span>
+              </button>
+              <button
+                type="button"
+                className="flex items-center gap-2 px-2.5 py-2 rounded-lg border border-base-300 hover:border-primary/40 hover:bg-primary/5 transition-colors text-left"
+                onClick={() => { setName('豆包视频'); setBaseUrl('https://ark.cn-beijing.volces.com/api/v3'); setProtocol('openai'); }}
+              >
+                <span className="text-xs font-medium">豆包视频</span>
+                <span className="text-[10px] text-base-content/40 ml-auto">视频</span>
+              </button>
+              <button
+                type="button"
+                className="flex items-center gap-2 px-2.5 py-2 rounded-lg border border-base-300 hover:border-primary/40 hover:bg-primary/5 transition-colors text-left"
+                onClick={() => { setName('Seedream'); setBaseUrl('https://api.xiangnian.art/v1'); setProtocol('openai'); }}
+              >
+                <span className="text-xs font-medium">Seedream</span>
+                <span className="text-[10px] text-base-content/40 ml-auto">图片</span>
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* 底部 */}
         <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-base-300 bg-base-200/50">

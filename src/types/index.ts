@@ -198,6 +198,13 @@ export interface NodeProviderMapping {
   newApiVideoGenerator?: string; // new-api 通用视频协议使用的供应商 ID
   veoGenerator?: string;        // Veo 视频节点使用的供应商 ID
   klingGenerator?: string;      // Kling 视频节点使用的供应商 ID
+  doubaoVideoGenerator?: string; // 豆包视频节点使用的供应商 ID
+  bailianWanGenerator?: string;  // 百炼万象视频生成节点使用的供应商 ID
+  qwenImageGenerator?: string;   // 百炼 Qwen 图片节点使用的供应商 ID
+  wanxiangGenerator?: string;    // 万象图片节点使用的供应商 ID
+  seedreamGenerator?: string;    // Seedream 图片节点使用的供应商 ID
+  deepseekGenerator?: string;    // Deepseek 文本模型使用的供应商 ID
+  kimiGenerator?: string;        // Kimi 文本模型使用的供应商 ID
   llm?: string;                 // PPT 内容生成节点使用的 LLM 供应商 ID
   llmContent?: string;          // LLM 内容生成节点使用的供应商 ID
 }
@@ -216,6 +223,13 @@ export const NODE_ALLOWED_PROTOCOLS: Record<keyof NodeProviderMapping, ProviderP
   newApiVideoGenerator: ["openai"],
   veoGenerator: ["openai", "google"],  // Veo 支持 OpenAI 兼容和 Google 协议
   klingGenerator: ["openai"],  // Kling 使用 OpenAI 兼容协议
+  doubaoVideoGenerator: ["openai"], // 豆包视频使用 OpenAI 兼容协议
+  bailianWanGenerator: ["openai"],  // 百炼万象使用 OpenAI 兼容协议
+  qwenImageGenerator: ["openai"],   // 百炼 Qwen 使用 OpenAI 兼容协议
+  wanxiangGenerator: ["openai"],    // 万象使用 OpenAI 兼容协议
+  seedreamGenerator: ["openai"],    // Seedream 使用 OpenAI 兼容协议
+  deepseekGenerator: ["openai", "openaiResponses"], // Deepseek 支持 OpenAI 兼容协议
+  kimiGenerator: ["openai", "openaiResponses"],     // Kimi 支持 OpenAI 兼容协议
   llm: ["google", "openai", "openaiResponses", "claude"],
   llmContent: ["google", "openai", "openaiResponses", "claude"],
 };
