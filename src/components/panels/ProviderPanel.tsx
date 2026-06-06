@@ -21,13 +21,6 @@ import { useModal, getModalAnimationClasses } from "@/hooks/useModal";
 import { NODE_ALLOWED_PROTOCOLS } from "@/types";
 import type { Provider, NodeProviderMapping, ProviderProtocol } from "@/types";
 
-// 协议类型配置
-const protocolConfig: { key: ProviderProtocol; label: string }[] = [
-  { key: "openai", label: "OpenAI" },
-  { key: "openaiResponses", label: "OpenAI Responses" },
-  { key: "google", label: "Google" },
-  { key: "claude", label: "Claude" },
-];
 
 // 协议类型显示标签
 const protocolLabels: Record<ProviderProtocol, string> = {
@@ -107,24 +100,6 @@ const nodeGroups: NodeGroup[] = [
 // 根据 key 查找节点配置
 const nodeConfigMap = new Map(nodeTypeConfig.map((n) => [n.key, n]));
 
-// 供应商分类映射 - 用于自动切换注入
-// 当用户为某分类下的一个节点分配供应商时，同一分类下其他兼容协议的同供应商也会自动注入
-const providerCategoryMap: Record<string, (keyof NodeProviderMapping)[]> = {
-  image: [
-    "imageGeneratorPro", "imageGeneratorFast", "imageGeneratorNB2",
-    "dalleGenerator", "fluxGenerator", "gptImageGenerator",
-    "doubaoGenerator", "zImageGenerator",
-    "qwenImageGenerator", "wanxiangGenerator", "seedreamGenerator",
-  ],
-  video: [
-    "videoGenerator", "newApiVideoGenerator", "veoGenerator",
-    "klingGenerator", "doubaoVideoGenerator", "bailianWanGenerator",
-  ],
-  llm: [
-    "llmContent", "llm", "deepseekGenerator", "kimiGenerator",
-  ],
-};
-
 export function ProviderPanel() {
   const {
     settings,
@@ -178,30 +153,9 @@ export function ProviderPanel() {
     });
   };
 
-  // 自动保存：直接更新 store
+  // 自动保存：直接更新 store（仅设置当前节点，不自动注入同分类其他节点）
   const handleNodeProviderChange = (nodeKey: keyof NodeProviderMapping, providerId: string) => {
-    // 为当前节点设置供应商
     setNodeProvider(nodeKey, providerId || undefined);
-
-    // 自动分类注入：同分类下未配置的同协议节点也使用此供应商
-    if (providerId) {
-      const provider = providers.find((p) => p.id === providerId);
-      if (provider) {
-        for (const [, nodeKeys] of Object.entries(providerCategoryMap)) {
-          // 只处理与当前节点同分类的节点
-          if ((nodeKeys as (keyof NodeProviderMapping)[]).includes(nodeKey)) {
-            for (const key of nodeKeys as (keyof NodeProviderMapping)[]) {
-              // 跳过自身，只注入到尚未配置的节点
-              if (key !== nodeKey && !nodeProviders[key]) {
-                if (NODE_ALLOWED_PROTOCOLS[key].includes(provider.protocol)) {
-                  setNodeProvider(key, providerId);
-                }
-              }
-            }
-          }
-        }
-      }
-    }
   };
 
   // 批量分配：将供应商分配给分组内所有兼容节点
@@ -579,27 +533,6 @@ function ProviderEditModal({ provider, onSave, onClose }: ProviderEditModalProps
           </button>
         </div>
 
-        {/* 协议类型选择 Tab */}
-        <div className="px-5 pt-4">
-          <div className="flex bg-base-200 rounded-lg p-1">
-            {protocolConfig.map(({ key, label }) => (
-              <button
-                key={key}
-                className={`
-                  flex-1 py-1.5 px-3 text-sm font-medium rounded-md transition-colors
-                  ${protocol === key
-                    ? "bg-base-100 text-base-content shadow-sm"
-                    : "text-base-content/60 hover:text-base-content"
-                  }
-                `}
-                onClick={() => setProtocol(key)}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        </div>
-
         {/* 表单 */}
         <div className="p-5 space-y-4">
           {/* 名称 */}
@@ -647,60 +580,101 @@ function ProviderEditModal({ provider, onSave, onClose }: ProviderEditModalProps
 
         {/* 快速模板 - 仅在添加时显示 */}
         {!isEditing && (
-          <div className="px-5 pb-4">
-            <div className="flex items-center gap-1.5 mb-2">
-              <div className="text-xs font-medium text-base-content/50 uppercase tracking-wider">快速模板</div>
-              <div className="flex-1 h-px bg-base-200" />
+          <div className="px-5 pb-4 space-y-3">
+            {/* 协议预设 */}
+            <div>
+              <div className="flex items-center gap-1.5 mb-2">
+                <div className="text-xs font-medium text-base-content/50 uppercase tracking-wider">协议预设</div>
+                <div className="flex-1 h-px bg-base-200" />
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                <button
+                  type="button"
+                  className="px-3 py-1.5 text-xs font-medium rounded-lg border border-base-300 hover:border-primary/40 hover:bg-primary/5 transition-colors"
+                  onClick={() => setProtocol('openai')}
+                >
+                  OpenAI
+                </button>
+                <button
+                  type="button"
+                  className="px-3 py-1.5 text-xs font-medium rounded-lg border border-base-300 hover:border-primary/40 hover:bg-primary/5 transition-colors"
+                  onClick={() => setProtocol('openaiResponses')}
+                >
+                  OpenAI Responses
+                </button>
+                <button
+                  type="button"
+                  className="px-3 py-1.5 text-xs font-medium rounded-lg border border-base-300 hover:border-primary/40 hover:bg-primary/5 transition-colors"
+                  onClick={() => setProtocol('google')}
+                >
+                  Google
+                </button>
+                <button
+                  type="button"
+                  className="px-3 py-1.5 text-xs font-medium rounded-lg border border-base-300 hover:border-primary/40 hover:bg-primary/5 transition-colors"
+                  onClick={() => setProtocol('claude')}
+                >
+                  Claude
+                </button>
+              </div>
             </div>
-            <div className="grid grid-cols-2 gap-1.5">
-              <button
-                type="button"
-                className="flex items-center gap-2 px-2.5 py-2 rounded-lg border border-base-300 hover:border-primary/40 hover:bg-primary/5 transition-colors text-left"
-                onClick={() => { setName('Deepseek'); setBaseUrl('https://api.deepseek.com'); setProtocol('openai'); }}
-              >
-                <span className="text-xs font-medium">Deepseek</span>
-                <span className="text-[10px] text-base-content/40 ml-auto">文本</span>
-              </button>
-              <button
-                type="button"
-                className="flex items-center gap-2 px-2.5 py-2 rounded-lg border border-base-300 hover:border-primary/40 hover:bg-primary/5 transition-colors text-left"
-                onClick={() => { setName('Kimi'); setBaseUrl('https://api.moonshot.cn'); setProtocol('openai'); }}
-              >
-                <span className="text-xs font-medium">Kimi</span>
-                <span className="text-[10px] text-base-content/40 ml-auto">文本</span>
-              </button>
-              <button
-                type="button"
-                className="flex items-center gap-2 px-2.5 py-2 rounded-lg border border-base-300 hover:border-primary/40 hover:bg-primary/5 transition-colors text-left"
-                onClick={() => { setName('百炼万象'); setBaseUrl('https://dashscope.aliyuncs.com/compatible-mode/v1'); setProtocol('openai'); }}
-              >
-                <span className="text-xs font-medium">百炼万象</span>
-                <span className="text-[10px] text-base-content/40 ml-auto">视频</span>
-              </button>
-              <button
-                type="button"
-                className="flex items-center gap-2 px-2.5 py-2 rounded-lg border border-base-300 hover:border-primary/40 hover:bg-primary/5 transition-colors text-left"
-                onClick={() => { setName('百炼 Qwen'); setBaseUrl('https://dashscope.aliyuncs.com/compatible-mode/v1'); setProtocol('openai'); }}
-              >
-                <span className="text-xs font-medium">百炼 Qwen</span>
-                <span className="text-[10px] text-base-content/40 ml-auto">图片</span>
-              </button>
-              <button
-                type="button"
-                className="flex items-center gap-2 px-2.5 py-2 rounded-lg border border-base-300 hover:border-primary/40 hover:bg-primary/5 transition-colors text-left"
-                onClick={() => { setName('豆包视频'); setBaseUrl('https://ark.cn-beijing.volces.com/api/v3'); setProtocol('openai'); }}
-              >
-                <span className="text-xs font-medium">豆包视频</span>
-                <span className="text-[10px] text-base-content/40 ml-auto">视频</span>
-              </button>
-              <button
-                type="button"
-                className="flex items-center gap-2 px-2.5 py-2 rounded-lg border border-base-300 hover:border-primary/40 hover:bg-primary/5 transition-colors text-left"
-                onClick={() => { setName('Seedream'); setBaseUrl('https://api.xiangnian.art/v1'); setProtocol('openai'); }}
-              >
-                <span className="text-xs font-medium">Seedream</span>
-                <span className="text-[10px] text-base-content/40 ml-auto">图片</span>
-              </button>
+
+            {/* 供应商模板 */}
+            <div>
+              <div className="flex items-center gap-1.5 mb-2">
+                <div className="text-xs font-medium text-base-content/50 uppercase tracking-wider">供应商模板</div>
+                <div className="flex-1 h-px bg-base-200" />
+              </div>
+              <div className="grid grid-cols-2 gap-1.5">
+                <button
+                  type="button"
+                  className="flex items-center gap-2 px-2.5 py-2 rounded-lg border border-base-300 hover:border-primary/40 hover:bg-primary/5 transition-colors text-left"
+                  onClick={() => { setName('Deepseek'); setBaseUrl('https://api.deepseek.com'); setProtocol('openai'); }}
+                >
+                  <span className="text-xs font-medium">Deepseek</span>
+                  <span className="text-[10px] text-base-content/40 ml-auto">文本</span>
+                </button>
+                <button
+                  type="button"
+                  className="flex items-center gap-2 px-2.5 py-2 rounded-lg border border-base-300 hover:border-primary/40 hover:bg-primary/5 transition-colors text-left"
+                  onClick={() => { setName('Kimi'); setBaseUrl('https://api.moonshot.cn'); setProtocol('openai'); }}
+                >
+                  <span className="text-xs font-medium">Kimi</span>
+                  <span className="text-[10px] text-base-content/40 ml-auto">文本</span>
+                </button>
+                <button
+                  type="button"
+                  className="flex items-center gap-2 px-2.5 py-2 rounded-lg border border-base-300 hover:border-primary/40 hover:bg-primary/5 transition-colors text-left"
+                  onClick={() => { setName('百炼万象'); setBaseUrl('https://dashscope.aliyuncs.com/compatible-mode/v1'); setProtocol('openai'); }}
+                >
+                  <span className="text-xs font-medium">百炼万象</span>
+                  <span className="text-[10px] text-base-content/40 ml-auto">视频</span>
+                </button>
+                <button
+                  type="button"
+                  className="flex items-center gap-2 px-2.5 py-2 rounded-lg border border-base-300 hover:border-primary/40 hover:bg-primary/5 transition-colors text-left"
+                  onClick={() => { setName('百炼 Qwen'); setBaseUrl('https://dashscope.aliyuncs.com/compatible-mode/v1'); setProtocol('openai'); }}
+                >
+                  <span className="text-xs font-medium">百炼 Qwen</span>
+                  <span className="text-[10px] text-base-content/40 ml-auto">图片</span>
+                </button>
+                <button
+                  type="button"
+                  className="flex items-center gap-2 px-2.5 py-2 rounded-lg border border-base-300 hover:border-primary/40 hover:bg-primary/5 transition-colors text-left"
+                  onClick={() => { setName('豆包视频'); setBaseUrl('https://ark.cn-beijing.volces.com/api/v3'); setProtocol('openai'); }}
+                >
+                  <span className="text-xs font-medium">豆包视频</span>
+                  <span className="text-[10px] text-base-content/40 ml-auto">视频</span>
+                </button>
+                <button
+                  type="button"
+                  className="flex items-center gap-2 px-2.5 py-2 rounded-lg border border-base-300 hover:border-primary/40 hover:bg-primary/5 transition-colors text-left"
+                  onClick={() => { setName('Seedream'); setBaseUrl('https://api.xiangnian.art/v1'); setProtocol('openai'); }}
+                >
+                  <span className="text-xs font-medium">Seedream</span>
+                  <span className="text-[10px] text-base-content/40 ml-auto">图片</span>
+                </button>
+              </div>
             </div>
           </div>
         )}
