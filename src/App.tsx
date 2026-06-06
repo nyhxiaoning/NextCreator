@@ -8,6 +8,7 @@ import { NodeInspector } from "@/components/inspectors/NodeInspector";
 import { SettingsPanel, KeyboardShortcutsPanel } from "@/components/panels";
 import { ProviderPanel } from "@/components/panels/ProviderPanel";
 import { StorageManagementModal } from "@/components/ui/StorageManagementModal";
+import { GitHubSyncModal } from "@/components/ui/GitHubSyncModal";
 import { ToastContainer } from "@/components/ui/Toast";
 import { useCanvasStore } from "@/stores/canvasStore";
 import { useFlowStore } from "@/stores/flowStore";
@@ -37,6 +38,9 @@ function App() {
 
   // 帮助面板状态
   const [isHelpOpen, setIsHelpOpen] = useState(false);
+
+  // GitHub 同步面板状态
+  const [isGitHubSyncOpen, setIsGitHubSyncOpen] = useState(false);
 
   // 用于追踪是否正在切换画布，避免循环更新
   const isLoadingCanvasRef = useRef(false);
@@ -174,7 +178,7 @@ function App() {
     <ReactFlowProvider>
       <div className="nc-app-shell flex flex-col h-screen w-screen overflow-hidden">
         {/* 顶部工具栏 */}
-        <Toolbar onOpenHelp={() => setIsHelpOpen(true)} />
+        <Toolbar onOpenHelp={() => setIsHelpOpen(true)} onOpenGitHubSync={() => setIsGitHubSyncOpen(true)} />
 
         {/* 主体内容 */}
         <div className="flex flex-1 overflow-hidden min-h-0">
@@ -199,6 +203,9 @@ function App() {
 
         {/* 存储管理弹窗 */}
         <StorageManagementModal />
+
+        {/* GitHub 同步弹窗 */}
+        <GitHubSyncModal isOpen={isGitHubSyncOpen} onClose={() => setIsGitHubSyncOpen(false)} />
 
         {/* Toast 通知容器 */}
         <ToastContainer />

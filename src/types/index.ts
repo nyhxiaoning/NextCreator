@@ -241,3 +241,7 @@ export interface SettingsState {
 
 // 提示词相关类型（从 promptConfig.ts 重新导出）
 export type { PromptCategory, PromptItem } from "@/config/promptConfig";
+
+// 项目数据统一结构
+export type { ProjectData } from "@/types/project";
+export { PROJECT_SCHEMA_VERSION } from "@/types/project";

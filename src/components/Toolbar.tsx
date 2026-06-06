@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Settings, Trash2, Download, Upload, Undo2, Redo2, HelpCircle, Server, HardDrive, AlertTriangle } from "lucide-react";
+import { Settings, Trash2, Download, Upload, Undo2, Redo2, HelpCircle, Server, HardDrive, AlertTriangle, FileJson, GitBranch } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { useFlowStore } from "@/stores/flowStore";
@@ -7,9 +7,10 @@ import { useStorageManagementStore } from "@/stores/storageManagementStore";
 import { useModal, getModalAnimationClasses } from "@/hooks/useModal";
 import { toast } from "@/stores/toastStore";
 import { WorkflowControls } from "@/components/workflow/WorkflowControls";
+import { cleanNodeDataForExport, exportFullProject, importFullProject } from "@/services/projectService";
 import logoImage from "@/assets/logo.png";
 
-export function Toolbar({ onOpenHelp }: { onOpenHelp?: () => void }) {
+export function Toolbar({ onOpenHelp, onOpenGitHubSync }: { onOpenHelp?: () => void; onOpenGitHubSync?: () => void }) {
   const { openSettings, openProviderPanel } = useSettingsStore();
   const clearCanvas = useFlowStore((state) => state.clearCanvas);
   const setNodes = useFlowStore((state) => state.setNodes);
@@ -28,46 +29,14 @@ export function Toolbar({ onOpenHelp }: { onOpenHelp?: () => void }) {
     setShowClearConfirm(false);
   };
 
-  // 清理节点数据中的 base64 图片，仅保留文件路径
-  const cleanNodeDataForExport = (nodes: ReturnType<typeof useFlowStore.getState>["nodes"]) => {
-    return nodes.map((node) => {
-      const cleanedNode = { ...node, data: { ...node.data } };
-      const data = cleanedNode.data;
+  // 导出完整项目
+  const handleFullExport = async () => {
+    await exportFullProject();
+  };
 
-      // 清理 ImageInputNode 的 base64 数据
-      if ("imageData" in data && "imagePath" in data) {
-        delete data.imageData;
-      }
-
-      // 清理 ImageGeneratorNode 的 base64 数据
-      if ("outputImage" in data && "outputImagePath" in data) {
-        delete data.outputImage;
-      }
-
-      // 清理 PPTContentNode 的 pages 数据中的 base64
-      if ("pages" in data && Array.isArray(data.pages)) {
-        data.pages = data.pages.map((page: Record<string, unknown>) => {
-          const cleanedPage = { ...page };
-
-          // 清理 result 中的 base64
-          if (cleanedPage.result && typeof cleanedPage.result === "object") {
-            const result = cleanedPage.result as Record<string, unknown>;
-            const cleanedResult = { ...result };
-            if (cleanedResult.imagePath) delete cleanedResult.image;
-            if (cleanedResult.thumbnailPath) delete cleanedResult.thumbnail;
-            cleanedPage.result = cleanedResult;
-          }
-
-          // 清理手动上传图片的 base64
-          if (cleanedPage.manualImagePath) delete cleanedPage.manualImage;
-          if (cleanedPage.manualThumbnailPath) delete cleanedPage.manualThumbnail;
-
-          return cleanedPage;
-        });
-      }
-
-      return cleanedNode;
-    });
+  // 导入完整项目
+  const handleFullImport = async () => {
+    await importFullProject(false);
   };
 
   // 导出工作流
@@ -79,17 +48,31 @@ export function Toolbar({ onOpenHelp }: { onOpenHelp?: () => void }) {
     const fileName = `next-workflow-${Date.now()}.json`;
 
     try {
-      const { save } = await import("@tauri-apps/plugin-dialog");
-      const { writeTextFile } = await import("@tauri-apps/plugin-fs");
+      if (typeof (window as any).__TAURI_INTERNALS__ !== "undefined") {
+        const { save } = await import("@tauri-apps/plugin-dialog");
+        const { writeTextFile } = await import("@tauri-apps/plugin-fs");
 
-      const filePath = await save({
-        defaultPath: fileName,
-        filters: [{ name: "JSON", extensions: ["json"] }],
-      });
+        const filePath = await save({
+          defaultPath: fileName,
+          filters: [{ name: "JSON", extensions: ["json"] }],
+        });
 
-      if (filePath) {
-        await writeTextFile(filePath, jsonStr);
-        toast.success(`工作流已保存到: ${filePath.split("/").pop()}`);
+        if (filePath) {
+          await writeTextFile(filePath, jsonStr);
+          toast.success(`工作流已保存到: ${filePath.split("/").pop()}`);
+        }
+      } else {
+        // 浏览器端：触发下载
+        const blob = new Blob([jsonStr], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        toast.success("工作流已导出");
       }
     } catch (error) {
       console.error("导出工作流失败:", error);
@@ -100,16 +83,40 @@ export function Toolbar({ onOpenHelp }: { onOpenHelp?: () => void }) {
   // 导入工作流
   const handleImport = async () => {
     try {
-      const { open } = await import("@tauri-apps/plugin-dialog");
-      const { readTextFile } = await import("@tauri-apps/plugin-fs");
+      let content: string | null = null;
 
-      const filePath = await open({
-        filters: [{ name: "JSON", extensions: ["json"] }],
-        multiple: false,
-      });
+      if (typeof (window as any).__TAURI_INTERNALS__ !== "undefined") {
+        const { open } = await import("@tauri-apps/plugin-dialog");
+        const { readTextFile } = await import("@tauri-apps/plugin-fs");
 
-      if (filePath && typeof filePath === "string") {
-        const content = await readTextFile(filePath);
+        const filePath = await open({
+          filters: [{ name: "JSON", extensions: ["json"] }],
+          multiple: false,
+        });
+
+        if (filePath && typeof filePath === "string") {
+          content = await readTextFile(filePath);
+        }
+      } else {
+        // 浏览器端：文件选择器
+        content = await new Promise<string | null>((resolve) => {
+          const input = document.createElement("input");
+          input.type = "file";
+          input.accept = ".json";
+          input.onchange = (e) => {
+            const file = (e.target as HTMLInputElement).files?.[0];
+            if (!file) { resolve(null); return; }
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result as string);
+            reader.onerror = () => resolve(null);
+            reader.readAsText(file);
+          };
+          input.oncancel = () => resolve(null);
+          input.click();
+        });
+      }
+
+      if (content) {
         const data = JSON.parse(content);
         if (data.nodes && data.edges) {
           setNodes(data.nodes);
@@ -179,6 +186,20 @@ export function Toolbar({ onOpenHelp }: { onOpenHelp?: () => void }) {
           </button>
         </div>
         <div className="mx-1 h-5 w-px bg-base-300" />
+
+        <div className="tooltip tooltip-bottom" data-tip="导入完整项目">
+          <button className="btn btn-ghost btn-sm gap-2" onClick={handleFullImport}>
+            <FileJson className="w-4 h-4" />
+            导入全部
+          </button>
+        </div>
+        <div className="tooltip tooltip-bottom" data-tip="导出完整项目">
+          <button className="btn btn-ghost btn-sm gap-2" onClick={handleFullExport}>
+            <FileJson className="w-4 h-4" />
+            导出全部
+          </button>
+        </div>
+        <div className="mx-1 h-5 w-px bg-base-300" />
         <div className="tooltip tooltip-bottom" data-tip="清空画布">
           <button
             className="btn btn-ghost btn-sm text-error gap-2"
@@ -192,9 +213,14 @@ export function Toolbar({ onOpenHelp }: { onOpenHelp?: () => void }) {
 
       {/* 右侧设置 */}
       <div className="flex items-center gap-1 rounded-lg border border-transparent bg-base-100/40 p-1">
-        <div className="tooltip tooltip-bottom" data-tip="存储管理">
+        {/* <div className="tooltip tooltip-bottom" data-tip="存储管理">
           <button className="btn btn-ghost btn-sm btn-circle" onClick={openStorageModal}>
             <HardDrive className="w-5 h-5" />
+          </button>
+        </div> */}
+        <div className="tooltip tooltip-bottom" data-tip="GitHub 同步">
+          <button className="btn btn-ghost btn-sm btn-circle" onClick={onOpenGitHubSync}>
+            <GitBranch className="w-5 h-5" />
           </button>
         </div>
         <div className="tooltip tooltip-bottom" data-tip="供应商管理">
