@@ -108,11 +108,48 @@ function getConnectedInputSources(
   return sources;
 }
 
+function getVisibleText(text: string): string {
+  // 去除首尾空白
+  const trimmed = text.trim();
+  // 移除 Markdown 语法字符，保留纯可见文本
+  let cleaned = trimmed
+    // 先移除代码块（多行）
+    .replace(/```[\s\S]*?```/g, "")
+    // 行内代码 `code`
+    .replace(/`[^`]+`/g, "")
+    // 图片 ![alt](url) → 保留 alt 文本
+    .replace(/!\[([^\]]*)\]\([^)]+\)/g, "$1")
+    // 链接 [text](url) → 保留 text
+    .replace(/\[([^\]]*)\]\([^)]+\)/g, "$1")
+    // 加粗/斜体 ***text*** → text
+    .replace(/(\*{1,3})([^*]+)\1/g, "$2")
+    // 下划线斜体/加粗 ___text___ → text
+    .replace(/(_{1,3})([^_]+)\1/g, "$2")
+    // 删除线 ~~text~~
+    .replace(/~~([^~]+)~~/g, "$1")
+    // 标题标记
+    .replace(/^#{1,6}\s+/gm, "")
+    // 引用标记
+    .replace(/^>\s+/gm, "")
+    // 无序列表标记
+    .replace(/^[-*+]\s+/gm, "")
+    // 有序列表标记
+    .replace(/^\d+[.)]\s+/gm, "")
+    // 分隔线
+    .replace(/^[-*_]{3,}\s*$/gm, "")
+    // 多余空白行压缩
+    .replace(/\n{3,}/g, "\n\n")
+    ;
+  return cleaned.trim();
+}
+
 function getOutputLabel(data: LLMContentNodeData) {
   if (!data.outputContent) return "已完成";
-  const charCount = data.outputContent.length;
-  if (charCount < 1000) return `${charCount} 字符`;
-  return `${(charCount / 1000).toFixed(1)}k 字符`;
+  const visibleText = getVisibleText(data.outputContent);
+  const charCount = [...visibleText].length;
+  if (charCount < 1000) return `${charCount} 字数`;
+  if (charCount < 100000) return `${(charCount / 1000).toFixed(1)}k 字数`;
+  return `${(charCount / 10000).toFixed(1)}w 字数`;
 }
 
 function LLMContentNodeBase({ id, data, selected }: NodeProps<LLMContentNodeType>) {
