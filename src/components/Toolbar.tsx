@@ -1,9 +1,8 @@
 import { useState } from "react";
-import { Settings, Trash2, Download, Upload, Undo2, Redo2, HelpCircle, Server, HardDrive, AlertTriangle, FileJson, GitBranch } from "lucide-react";
+import { Settings, Trash2, Download, Upload, Undo2, Redo2, HelpCircle, Server, AlertTriangle, FileJson, GitBranch } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { useFlowStore } from "@/stores/flowStore";
-import { useStorageManagementStore } from "@/stores/storageManagementStore";
 import { useModal, getModalAnimationClasses } from "@/hooks/useModal";
 import { toast } from "@/stores/toastStore";
 import { WorkflowControls } from "@/components/workflow/WorkflowControls";
@@ -19,7 +18,6 @@ export function Toolbar({ onOpenHelp, onOpenGitHubSync }: { onOpenHelp?: () => v
   const redo = useFlowStore((state) => state.redo);
   const canUndo = useFlowStore((state) => state.canUndo);
   const canRedo = useFlowStore((state) => state.canRedo);
-  const { openModal: openStorageModal } = useStorageManagementStore();
 
   // 清空画布确认对话框状态
   const [showClearConfirm, setShowClearConfirm] = useState(false);

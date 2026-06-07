@@ -15,7 +15,6 @@ import {
   Folder,
   Lock,
 } from "lucide-react";
-import { Input } from "@/components/ui/Input";
 import { useModal, getModalAnimationClasses } from "@/hooks/useModal";
 import { useGitHubSyncStore } from "@/stores/githubSyncStore";
 import { toast } from "@/stores/toastStore";
