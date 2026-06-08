@@ -190,6 +190,88 @@ export async function pushProject(
 }
 
 /**
+ * 从 GitHub 拉取原始 JSON 内容（不解析为 ProjectData）
+ * 返回原始 JSON 字符串
+ */
+export async function pullRawContent(
+  config: GitHubSyncConfig
+): Promise<string> {
+  const url = `https://api.github.com/repos/${config.owner}/${config.repo}/contents/${encodeURIComponent(config.path)}`;
+
+  const response = await fetch(url, {
+    headers: getHeaders(config.token),
+  });
+
+  const data: GitHubContentResponse = await handleGitHubResponse(response);
+
+  if (!data.content || data.encoding !== "base64") {
+    throw new Error("GitHub 返回的文件内容格式异常");
+  }
+
+  return decodeBase64(data.content);
+}
+
+/**
+ * 推送原始 JSON 内容到 GitHub（不限定 ProjectData 格式）
+ * @param sha 如果文件已存在则需提供 SHA
+ */
+export async function pushRawContent(
+  config: GitHubSyncConfig,
+  content: string,
+  sha?: string | null
+): Promise<void> {
+  const url = `https://api.github.com/repos/${config.owner}/${config.repo}/contents/${encodeURIComponent(config.path)}`;
+
+  const encoded = encodeBase64(content);
+
+  const body: Record<string, unknown> = {
+    message: `NextCreator 文件同步 - ${new Date().toLocaleString("zh-CN")}`,
+    content: encoded,
+  };
+  if (sha) {
+    body.sha = sha;
+  }
+
+  const response = await fetch(url, {
+    method: "PUT",
+    headers: getHeaders(config.token),
+    body: JSON.stringify(body),
+  });
+
+  await handleGitHubResponse(response);
+}
+
+/**
+ * 列出 GitHub 仓库目录中的文件
+ * 返回文件名列表
+ */
+export async function listDirectory(
+  config: GitHubSyncConfig
+): Promise<{ name: string; path: string; type: string }[]> {
+  const url = `https://api.github.com/repos/${config.owner}/${config.repo}/contents/${encodeURIComponent(config.path)}`;
+
+  const response = await fetch(url, {
+    headers: getHeaders(config.token),
+  });
+
+  if (response.status === 404) {
+    return [];
+  }
+
+  const data = await handleGitHubResponse(response);
+
+  if (!Array.isArray(data)) {
+    throw new Error("路径不是一个目录");
+  }
+
+  return data.map((item: any) => ({
+    name: item.name,
+    path: item.path,
+    type: item.type,
+  }));
+}
+
+/**
  * 删除 GitHub 上的备份文件
  */
 export async function deleteProject(config: GitHubSyncConfig): Promise<void> {

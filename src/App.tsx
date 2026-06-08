@@ -9,6 +9,7 @@ import { SettingsPanel, KeyboardShortcutsPanel } from "@/components/panels";
 import { ProviderPanel } from "@/components/panels/ProviderPanel";
 import { StorageManagementModal } from "@/components/ui/StorageManagementModal";
 import { GitHubSyncModal } from "@/components/ui/GitHubSyncModal";
+import { GitHubFileBar } from "@/components/ui/GitHubFileBar";
 import { ToastContainer } from "@/components/ui/Toast";
 import { useCanvasStore } from "@/stores/canvasStore";
 import { useFlowStore } from "@/stores/flowStore";
@@ -179,6 +180,9 @@ function App() {
       <div className="nc-app-shell flex flex-col h-screen w-screen overflow-hidden">
         {/* 顶部工具栏 */}
         <Toolbar onOpenHelp={() => setIsHelpOpen(true)} onOpenGitHubSync={() => setIsGitHubSyncOpen(true)} />
+
+        {/* GitHub 文件列表栏 */}
+        <GitHubFileBar />
 
         {/* 主体内容 */}
         <div className="flex flex-1 overflow-hidden min-h-0">
